@@ -9,8 +9,8 @@ from causeofwhy import indexer
 # wiki_location = ('R:/_Other/Wikipedia/enwiki-20120902-pages-articles-'
 #                 'multistream.xml')
 # wikilocation = 'C:/wiki/enwiki-20120902-pages-articles-multistream.xml'
-# wiki_location = 'R:/_Other/Wikipedia/simplewiki-20121002-pages-articles.xml'
-wiki_location = 'C:/wiki/simplewiki-20121002-pages-articles.xml'
+wiki_location = 'R:/_Other/Wikipedia/simplewiki-20121002-pages-articles.xml'
+# wiki_location = 'C:/wiki/simplewiki-20121002-pages-articles.xml'
 
 
 def main():

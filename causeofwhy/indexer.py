@@ -49,8 +49,12 @@ tokenizer = nltk.tokenize.TreebankWordTokenizer()
 #stemmer = nltk.PorterStemmer()
 stemmer = None
 lemmatizer = nltk.WordNetLemmatizer()
-with open('wiki_punkt.25k.pickle', mode='rb') as f:
-    sent_detector = pickle.load(f)
+PUNKT_FNAME = "wiki_punkt.pickle"
+try:
+    with open(PUNKT_FNAME, mode='rb') as f:
+        sent_detector = pickle.load(f)
+except (IOError, pickle.UnpicklingError):
+    sent_detector = None
 STOPWORDS = [lemmatizer.lemmatize(t) for t in stopwords.words('english')]
 
 
@@ -145,6 +149,12 @@ class Page:
 
 # FUNCTIONS
 
+def index_exists(fname):
+    """Specifies whether or not an index has been created for a wiki dump."""
+    # TODO(bwbaugh): Implement this function.
+    return False
+
+
 def bad_page(title, text):
     for term in title_start_with_terms:
         if title[:len(term)].upper() == term:
@@ -210,18 +220,12 @@ def page_generator(file_obj):
                 yield Page(ID, title, text, start)
 
 
-def index_exists(fname):
-    """Specifies whether or not an index has been created for a wiki dump."""
-    # TODO(bwbaugh): Implement this function.
-    return False
-
-
 def worker(taskq, doneq):
     logger = logging.getLogger('worker')
     done_buff = []
     try:
         while True:
-            chunk = taskq.get(timeout=20)
+            chunk = taskq.get()
             if chunk is None:
                 return
             for page in chunk:
@@ -252,7 +256,7 @@ def writer(doneq, wiki_location):
                          encoding='utf-8') as doci:
             # Begin processing chunks as they come in.
             while True:
-                chunk = doneq.get(timeout=20)
+                chunk = doneq.get()
                 if chunk is None:
                     pill_count += 1
                     if pill_count == NUMBER_OF_PROCESSES:
@@ -283,16 +287,59 @@ def writer(doneq, wiki_location):
             pickle.dump(token_counts, tokc, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-# Main
+def create_punkt_sent_detector(fname, progress_count, max_pages=25000):
+    logger = logging.getLogger('create_punkt_sent_detector')
+
+    punkt = nltk.tokenize.punkt.PunktTrainer()
+
+    logger.info("Training punkt sentence detector")
+
+    wiki_size = os.path.getsize(fname)
+    page_count = 0
+
+    try:
+        with open(fname, mode='rb') as wiki_dump:
+            pages = page_generator(wiki_dump)
+            for page in pages:
+                page.remove_markup()
+                page.unidecode()
+                punkt.train(page.text, finalize=False, verbose=False)
+                page_count += 1
+                if page_count == max_pages:
+                    break
+                if page_count % progress_count == 0:
+                    print(page_count, page.start,
+                          (page.start / wiki_size * 100),
+                          # taskq.qsize() if taskq is not None else 'n/a',
+                          # doneq.qsize() if doneq is not None else 'n/a',
+                          page.ID, page.title)
+    except KeyboardInterrupt:
+        print 'KeyboardInterrupt: Stopping the reading of the dump early!'
+
+    logger.info('Now finalzing Punkt training.')
+
+    punkt.finalize_training(verbose=True)
+    learned = punkt.get_params()
+    sbd = nltk.tokenize.punkt.PunktSentenceTokenizer(learned)
+    with open(PUNKT_FNAME, mode='wb') as f:
+        pickle.dump(sbd, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+# Main function of module
 def create_index(fname, progress_count=None, max_pages=None, skip_exists=True):
     if skip_exists and index_exists(fname):
         return
+
+    if sent_detector is None:
+        create_punkt_sent_detector(fname=fname,
+                                   progress_count=CHUNK_SIZE,
+                                   max_pages=min(25000, max_pages))
 
     # Set params
     if progress_count is None:
         progress_count = CHUNK_SIZE * NUMBER_OF_PROCESSES
 
-    logger = logging.getLogger('main')
+    logger = logging.getLogger('create_index')
 
     wiki_size = os.path.getsize(fname)
 
@@ -315,8 +362,11 @@ def create_index(fname, progress_count=None, max_pages=None, skip_exists=True):
 
     # Process XML dump
     logger.info('Begining XML parse')
-    task_buff = []
+
+    wiki_size = os.path.getsize(fname)
     page_count = 0
+
+    task_buff = []
     try:
         with open(fname, mode='rb') as wiki_dump:
             pages = page_generator(wiki_dump)
@@ -331,7 +381,8 @@ def create_index(fname, progress_count=None, max_pages=None, skip_exists=True):
                 if page_count % progress_count == 0:
                     print(page_count, page.start,
                           (page.start / wiki_size * 100),
-                          taskq.qsize(), doneq.qsize(), page.ID, page.title)
+                          taskq.qsize(), doneq.qsize(),
+                          page.ID, page.title)
     except KeyboardInterrupt:
         print 'KeyboardInterrupt: Stopping the reading of the dump early!'
     finally:
@@ -347,8 +398,3 @@ def create_index(fname, progress_count=None, max_pages=None, skip_exists=True):
     # Wait for all child processes to stop (especially that writer!)
     for p in workers:
         p.join()
-
-
-# Especially needed for protecting multiprocessing
-if __name__ == '__main__':
-    sys.exit(create_index())
