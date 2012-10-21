@@ -1,0 +1,24 @@
+############
+## Project
+############
+
+# Library folder
+lib/
+
+# Pickled files
+*.pickle
+
+
+#############
+## Python
+#############
+
+*.py[co]
+
+
+#############
+## Sublime
+#############
+
+*.sublime-project
+*.sublime-workspace
