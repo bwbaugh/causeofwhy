@@ -154,14 +154,14 @@ class Page:
         f.close()
         return output
 
-    def __eq__(self, other):
-        return self.ID == other.ID
+    # def __eq__(self, other):
+    #     return self.ID == other.ID
 
-    def __ne__(self, other):
-        return not self.__eq__(other)
+    # def __ne__(self, other):
+    #     return not self.__eq__(other)
 
-    def __hash__(self):
-        return hash((self.ID,))
+    # def __hash__(self):
+    #     return hash((self.ID,))
 
 
 class Index:
@@ -251,22 +251,21 @@ class Index:
                     pages.append(find_page(start))
                 return pages
 
-    def get_all_union(self, terms):
+    def union(self, terms):
         """Returns set of all pages that contain any term in the term list."""
         pages = set()
         for term in terms:
             ID = self.toki[term]
-            pages.update(self.get_page(ID))
-        return pages
+            pages.update(ID)
+        return self.get_page(pages)
 
-    def get_all_intersect(self, terms):
+    def intersect(self, terms):
         """Returns set of all pages that contain all terms in the term list."""
-        first = self.toki[terms.pop()]
-        pages = set(self.get_page(first))
+        pages = set(self.toki[terms.pop()])
         for term in terms:
             ID = self.toki[term]
-            pages.intersection_update(self.get_page(ID))
-        return pages
+            pages.intersection_update(ID)
+        return self.get_page(pages)
 
 
 # FUNCTIONS
