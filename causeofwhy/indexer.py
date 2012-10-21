@@ -73,6 +73,12 @@ text_start_with_terms = '#REDIRECT {{softredirect'.upper().split(' ')
 text_last_terms = '{{Disamb {{Dab stub}}'.upper().split(' ')
 
 
+# EXCEPTIONS
+
+class IndexLoadError(Exception):
+    pass
+
+
 # CLASSES
 
 class Page:
@@ -130,30 +136,140 @@ class Page:
         for sentence in self.sentences_of_tokens:
             for token in sentence:
                 self.token_count[token] += 1
-        self.token_count = [(token, str(count)) for (token, count) in\
+        self.token_count = [(token, count) for (token, count) in\
                             sorted(self.token_count.iteritems(),
                                    key=operator.itemgetter(1),
                                    reverse=True)]
 
     def __str__(self):
+        self.remove_markup()
+        self.unidecode()
         f = StringIO()
-        f.write('=' * 40 + '\n')
-        f.write(self.ID, self.title + '\n')
-        f.write('-' * 40 + '\n')
-        f.write(self.text)
-        f.write('=' * 40 + '\n')
+        f.write('=' * 79 + '\n')
+        f.write(str(self.ID) + ' ' + self.title + '\n')
+        f.write('-' * 79 + '\n')
+        f.write(self.text.encode('utf-8') + '\n')
+        f.write('=' * 79 + '\n')
         output = f.getvalue()
         f.close()
         return output
 
+    def __eq__(self, other):
+        return self.ID == other.ID
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __hash__(self):
+        return hash((self.ID,))
+
+
+class Index:
+    """The main information retrieval (IR) class.
+
+    This class uses the previously created index files to create an
+    Index object. This object represents the information retrieval (IR)
+    portion of the system.
+
+    Individual page objects can be retrieved from disk, or a set of
+    pages that match a term list (either by union or intersection).
+    """
+    def __init__(self, base_fname):
+        """Loads all indices for the base_fname Wikipedia dump."""
+        self.base_fname = base_fname
+        self.load_pagi()
+        self.load_doci()
+        self.load_tokc()
+        self.load_toki()
+
+    def load_pagi(self):
+        """Load the page index {page.ID -> page.start, doci.offset}"""
+        self.pagi = dict()
+        try:
+            with codecs.open(self.base_fname + '.pagi', encoding='utf-8') as f:
+                for line in f:
+                    ID, start, offset = line.split('\t')
+                    self.pagi[int(ID)] = (int(start), int(offset))
+            if not self.pagi:
+                raise IndexLoadError
+        except IOError:
+            raise IndexLoadError
+
+    def load_doci(self):
+        """Load the document index. {page.ID -> page.token_count}"""
+        self.doci = collections.defaultdict(dict)
+        try:
+            with codecs.open(self.base_fname + '.doci', encoding='utf-8') as f:
+                for line in f:
+                    ID, token_counts = line.split('\t', 1)
+                    for token_count in token_counts.split('\t'):
+                        token, count = token_count.split(chr(26))
+                        self.doci[ID][token] = count
+            if not self.doci:
+                raise IndexLoadError
+        except IOError:
+            raise IndexLoadError
+
+    def load_tokc(self):
+        """Load the token counts {tokc[token] -> count}"""
+        try:
+            with open(self.base_fname + '.tokc', mode='rb') as f:
+                self.tokc = pickle.load(f)
+            if not self.tokc:
+                raise IndexLoadError
+        except (IOError, pickle.UnpicklingError):
+            raise IndexLoadError
+
+    def load_toki(self):
+        """Load the token document index: {toki[token] -> set(documents)}"""
+        try:
+            with open(self.base_fname + '.toki', mode='rb') as f:
+                self.toki = pickle.load(f)
+            if not self.toki:
+                raise IndexLoadError
+        except (IOError, pickle.UnpicklingError):
+            raise IndexLoadError
+
+    def get_page(self, ID):
+        """Returns the corresponding Page object residing on disk."""
+
+        def find_page(start):
+            wiki_dump.seek(start)
+            pages = page_generator(wiki_dump)
+            return next(pages)
+
+        with open(self.base_fname, mode='rb') as wiki_dump:
+            try:
+                iterator = iter(ID)
+            except TypeError:
+                start, offset = self.pagi[ID]
+                return find_page(start)
+            else:
+                pages = []
+                for page in ID:
+                    start, offset = self.pagi[page]
+                    pages.append(find_page(start))
+                return pages
+
+    def get_all_union(self, terms):
+        """Returns set of all pages that contain any term in the term list."""
+        pages = set()
+        for term in terms:
+            ID = self.toki[term]
+            pages.update(self.get_page(ID))
+        return pages
+
+    def get_all_intersect(self, terms):
+        """Returns set of all pages that contain all terms in the term list."""
+        first = self.toki[terms.pop()]
+        pages = set(self.get_page(first))
+        for term in terms:
+            ID = self.toki[term]
+            pages.intersection_update(self.get_page(ID))
+        return pages
+
 
 # FUNCTIONS
-
-def index_exists(fname):
-    """Specifies whether or not an index has been created for a wiki dump."""
-    # TODO(bwbaugh): Implement this function.
-    return False
-
 
 def bad_page(title, text):
     for term in title_start_with_terms:
@@ -173,7 +289,7 @@ def bad_page(title, text):
     return False
 
 
-def page_generator(file_obj):
+def page_generator(file_obj, offset=None):
     """Parses a Wikipedia dump file and yields individual pages."""
     state = title = ID = text = start = None
     pos = next_pos = 0
@@ -217,7 +333,7 @@ def page_generator(file_obj):
             if bad_page(title, text):
                 continue
             else:
-                yield Page(ID, title, text, start)
+                yield Page(int(ID), title, text, start)
 
 
 def worker(taskq, doneq):
@@ -267,9 +383,10 @@ def writer(doneq, wiki_location):
                     pagi.write('\t'.join([str(page.ID).ljust(1),
                                           str(page.start).ljust(1),
                                           str(doci.tell()).ljust(1)]) + '\n')
-                    doci.write('\t'.join([page.ID] + [chr(26).join([k, v]) for
-                                                      k, v in page.token_count]) +
-                               '\n')
+                    doci.write('\t'.join([str(page.ID)] +
+                                         [chr(26).join([k, str(v)]) for k, v in
+                                                        page.token_count]) +
+                                         '\n')
     #                txt.write('\t'.join([str(ID), title]) + '\n\n')
     #                for sentence in text:
     #                    txt.write(' '.join([token for token in sentence]) + '\n')
@@ -327,8 +444,13 @@ def create_punkt_sent_detector(fname, progress_count, max_pages=25000):
 
 # Main function of module
 def create_index(fname, progress_count=None, max_pages=None, skip_exists=True):
-    if skip_exists and index_exists(fname):
-        return
+    logger = logging.getLogger('create_index')
+
+    if skip_exists:
+        try:
+            return Index(base_fname=fname)
+        except IndexLoadError:
+            pass
 
     if sent_detector is None:
         create_punkt_sent_detector(fname=fname,
@@ -338,8 +460,6 @@ def create_index(fname, progress_count=None, max_pages=None, skip_exists=True):
     # Set params
     if progress_count is None:
         progress_count = CHUNK_SIZE * NUMBER_OF_PROCESSES
-
-    logger = logging.getLogger('create_index')
 
     wiki_size = os.path.getsize(fname)
 
@@ -398,3 +518,5 @@ def create_index(fname, progress_count=None, max_pages=None, skip_exists=True):
     # Wait for all child processes to stop (especially that writer!)
     for p in workers:
         p.join()
+
+    return Index(base_fname=fname)

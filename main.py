@@ -14,7 +14,9 @@ wiki_location = 'R:/_Other/Wikipedia/simplewiki-20121002-pages-articles.xml'
 
 
 def main():
-    indexer.create_index(wiki_location)
+    index = indexer.create_index(wiki_location)
+    while True:
+        print input('>>> ')
 
 
 if __name__ == '__main__':
