@@ -33,6 +33,13 @@ segmentation, word tokenization, and more.
 
 * <http://nltk.org/install.html>
 
+#### nltk resources
+
+In addition, you will need to download several nltk resources using
+nltk.download() after you have the nltk library installed.
+
+* 'taggers/maxent_treebank_pos_tagger/english.pickle'
+
 ### gensim
 
 Some useful Information Retrieval (IR) algorithms including string to
