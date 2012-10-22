@@ -87,7 +87,7 @@ class Page:
         self.title = title
         self.text = text
         self.start = start
-        self.sentences_of_tokens = None
+        self.sentences = None
         self.token_count = None
 
     def remove_markup(self):
@@ -100,40 +100,45 @@ class Page:
         self.title = unidecode(self.title).strip()
         self.text = unidecode(self.text).strip()
 
-    def tokenize_sentences_of_tokens(self):
-        self.sentences_of_tokens = []
+    def preprocess(self):
+        """Convenience method that removed markup does unidecode."""
+        self.remove_markup()
+        self.unidecode()
+
+    def tokenize_sentences(self):
+        self.sentences = []
         for paragraph in self.text.split(PARAGRAPH_SEPARATOR):
             # Sentence segmentation
             sentences = sent_detector.tokenize(paragraph,
                                                realign_boundaries=True)
             # Tokenization
             sentences = tokenizer.batch_tokenize(sentences)
-            self.sentences_of_tokens.extend(sentences)
+            self.sentences.extend(sentences)
 
-    def regularlize_text(self):
-        for i, sentence in enumerate(self.sentences_of_tokens):
+    def regularize_text(self):
+        for i, sentence in enumerate(self.sentences):
             for j, token in enumerate(sentence):
                 # Normalize text by case folding
-                self.sentences_of_tokens[i][j] = token.lower()
+                self.sentences[i][j] = token.lower()
                 # Remove punctuation
                 if token in PUNCTUATION:
-                    self.sentences_of_tokens[i][j] = None
+                    self.sentences[i][j] = None
                 # Lemmatize
-                self.sentences_of_tokens[i][j] = lemmatizer.lemmatize(token)
+                self.sentences[i][j] = lemmatizer.lemmatize(token)
                 # Stopword removal
                 if token in STOPWORDS:
-                    self.sentences_of_tokens[i][j] = None
+                    self.sentences[i][j] = None
             # Remove empty tokens
-            self.sentences_of_tokens[i] = [x for x in
-                                           self.sentences_of_tokens[i] if x is
+            self.sentences[i] = [x for x in
+                                           self.sentences[i] if x is
                                            not None]
         # Remove empty sentences
-        self.sentences_of_tokens = [x for x in self.sentences_of_tokens if x]
+        self.sentences = [x for x in self.sentences if x]
 
     def count_tokens(self):
         """Count the frequency of text's tokens in a bag-of-words style."""
         self.token_count = collections.defaultdict(int)
-        for sentence in self.sentences_of_tokens:
+        for sentence in self.sentences:
             for token in sentence:
                 self.token_count[token] += 1
         self.token_count = [(token, count) for (token, count) in\
@@ -255,16 +260,18 @@ class Index:
         """Returns set of all pages that contain any term in the term list."""
         pages = set()
         for term in terms:
-            ID = self.toki[term]
-            pages.update(ID)
+            if term in self.toki:
+                ID = self.toki[term]
+                pages.update(ID)
         return self.get_page(pages)
 
     def intersect(self, terms):
         """Returns set of all pages that contain all terms in the term list."""
         pages = set(self.toki[terms.pop()])
         for term in terms:
-            ID = self.toki[term]
-            pages.intersection_update(ID)
+            if term in self.toki:
+                ID = self.toki[term]
+                pages.intersection_update(ID)
         return self.get_page(pages)
 
 
@@ -348,8 +355,8 @@ def worker(taskq, doneq):
                 if len(page.text) < page_length_limit:
                     continue
                 page.unidecode()
-                page.tokenize_sentences_of_tokens()
-                page.regularlize_text()
+                page.tokenize_sentences()
+                page.regularize_text()
                 page.count_tokens()
                 done_buff.append(page)
             doneq.put(done_buff)
