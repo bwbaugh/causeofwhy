@@ -6,7 +6,7 @@ try:
 except ImportError:
     from StringIO import StringIO
 
-from causeofwhy import indexer
+from causeofwhy import indexer, web
 
 
 # Dump location
@@ -34,9 +34,12 @@ def page_list(page):
 
 
 def main():
+    print 'Loading index'
     index = indexer.create_index(wiki_location)
-    while True:
-        print input('>>> ')
+    # while True:
+    #     print input('>>> ')
+    print 'Starting web server'
+    web.main(index)
 
 
 if __name__ == '__main__':

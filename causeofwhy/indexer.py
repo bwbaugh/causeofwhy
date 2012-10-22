@@ -13,6 +13,7 @@ import collections
 import operator
 import codecs
 import re
+import string
 try:
     import cPickle as pickle
 except ImportError:
@@ -59,8 +60,6 @@ STOPWORDS = [lemmatizer.lemmatize(t) for t in stopwords.words('english')]
 
 
 # CONSTANTS AND GLOBAL VARS
-
-PUNCTUATION = """( ) ' '' `` : ; , ? % + ! - # = } { [ ]""".split(' ')
 PARAGRAPH_SEPARATOR = u'\u2029'
 
 # Bad page checks
@@ -117,21 +116,7 @@ class Page:
 
     def regularize_text(self):
         for i, sentence in enumerate(self.sentences):
-            for j, token in enumerate(sentence):
-                # Normalize text by case folding
-                self.sentences[i][j] = token.lower()
-                # Remove punctuation
-                if token in PUNCTUATION:
-                    self.sentences[i][j] = None
-                # Lemmatize
-                self.sentences[i][j] = lemmatizer.lemmatize(token)
-                # Stopword removal
-                if token in STOPWORDS:
-                    self.sentences[i][j] = None
-            # Remove empty tokens
-            self.sentences[i] = [x for x in
-                                           self.sentences[i] if x is
-                                           not None]
+            self.sentences[i] = regularize(sentence)
         # Remove empty sentences
         self.sentences = [x for x in self.sentences if x]
 
@@ -267,6 +252,7 @@ class Index:
 
     def intersect(self, terms):
         """Returns set of all pages that contain all terms in the term list."""
+        terms = list(terms)
         pages = set(self.toki[terms.pop()])
         for term in terms:
             if term in self.toki:
@@ -276,6 +262,24 @@ class Index:
 
 
 # FUNCTIONS
+
+def regularize(tokens):
+    """Returns a copy of a regularized version of the token list."""
+    tokens = list(tokens)
+    for i, token in enumerate(tokens):
+        # Normalize text by case folding
+        token = token.lower()
+        # Lemmatize (birds -> bird)
+        token = lemmatizer.lemmatize(token)
+        # Stopword and punctuation removal
+        if token in STOPWORDS or token in string.punctuation:
+            token = None
+        # Done; update value in list
+        tokens[i] = token
+    # Remove empty tokens
+    tokens = [x for x in tokens if x is not None]
+    return tokens
+
 
 def bad_page(title, text):
     for term in title_start_with_terms:
