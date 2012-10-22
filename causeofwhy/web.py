@@ -24,8 +24,13 @@ class QueryHandler(tornado.web.RequestHandler):
         ir_query = indexer.regularize(ir_query)
         answers = self.index.ranked(ir_query)
         num_results = len(answers)
+        # Reduce number of pages we need to get from disk
         answers = answers[start:num_top]
-        for answer in answers:
+        answers, similarity = zip(*answers)
+        # Retrieve the Page objects from the list of Page.IDs
+        answers = self.index.get_page(answers)
+        for answer, sim in zip(answers, similarity):
+            answer.cosine_sim = sim
             answer.preprocess()
             answer.tokenize_sentences()
             sentences = []

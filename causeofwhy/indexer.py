@@ -244,41 +244,41 @@ class Index:
                 return pages
 
     def union(self, terms):
-        """Returns set of all pages that contain any term in the term list."""
+        """Returns set of all Page.IDs that contain any term in the term list."""
         pages = set()
         for term in terms:
             if term in self.toki:
                 ID = self.toki[term]
                 pages.update(ID)
-        return self.get_page(pages)
+        return pages
 
     def intersect(self, terms):
-        """Returns set of all pages that contain all terms in the term list."""
+        """Returns set of all Page.IDs that contain all terms in the term list."""
         terms = list(terms)
         pages = set(self.toki[terms.pop()])
         for term in terms:
             if term in self.toki:
                 ID = self.toki[term]
                 pages.intersection_update(ID)
-        return self.get_page(pages)
+        return pages
 
     def ranked(self, terms):
-        """Returns a ranked list of Pages based on similarity to a query."""
+        """Returns a ranked list of tuples of Page.IDs and similarity value."""
         q_tfidf = Index.query_tfidf(terms)
         pages = self.union(terms)
         ranked_pages = dict()
-        for page in pages:
+        for ID in pages:
             # Calculate document TF-IDF
             d_tfidf = dict()
-            max_count = max(self.doci[page.ID].itervalues())
-            for term in self.doci[page.ID]:
-                tf = self.doci[page.ID][term] / max_count
+            max_count = max(self.doci[ID].itervalues())
+            for term in self.doci[ID]:
+                tf = self.doci[ID][term] / max_count
                 idf = math.log(len(self.doci) / len(self.toki[term]))
                 d_tfidf[term] = tf * idf
             # Calculate inner product
             inner_product = 0
             for term in terms:
-                if term in self.doci[page.ID]:
+                if term in self.doci[ID]:
                     inner_product += q_tfidf[term] * d_tfidf[term]
             # Calculate query length
             query_length = 0
@@ -292,11 +292,10 @@ class Index:
             doc_length = math.sqrt(doc_length)
             # Calculate the cosine similarity
             cosine_sim = inner_product / (query_length * doc_length)
-            page.cosine_sim = cosine_sim
-            ranked_pages[page] = cosine_sim
+            ranked_pages[ID] = cosine_sim
         ranked_pages = sorted(ranked_pages.iteritems(),
                               key=operator.itemgetter(1), reverse=True)
-        return [page for page, sim in ranked_pages]
+        return ranked_pages
 
     @staticmethod
     def query_tfidf(terms):
