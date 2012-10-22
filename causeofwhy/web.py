@@ -18,9 +18,13 @@ class QueryHandler(tornado.web.RequestHandler):
 
     def get(self):
         query = self.get_argument('query')
+        num_top = int(self.get_argument('top', default=10))
+        start = int(self.get_argument('start', default=0))
         ir_query = indexer.tokenizer.tokenize(query)
         ir_query = indexer.regularize(ir_query)
-        answers = self.index.intersect(ir_query)
+        answers = self.index.ranked(ir_query)
+        num_results = len(answers)
+        answers = answers[start:num_top]
         for answer in answers:
             answer.preprocess()
             answer.tokenize_sentences()
@@ -34,6 +38,7 @@ class QueryHandler(tornado.web.RequestHandler):
         self.render("answer.html",
                     query=query,
                     ir_query=' '.join(ir_query),
+                    num_results=num_results,
                     answers=answers)
 
 

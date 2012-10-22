@@ -102,6 +102,7 @@ functions include:
 * Get the set intersection of documents that contain all terms in a term
 list.
 * Get the union set of documents that contain any term in a term list.
+* Get a ranked list of documents that are similar to a term list vector.
 
 ### Question Analysis
 
@@ -134,9 +135,9 @@ Some additional future work on this module might include:
 
 ### Candidate Document Selection
 
-Get a ranked list of documents based on a similarity measure (TF-IDF)
-compared to a query term list by using the indices and functions of the
-IR component.
+Get a ranked list of documents based on a similarity measure
+(TF&ndash;IDF) compared to a query term list by using the indices and
+functions of the IR component.
 
 If the next step of *Candidate Document Analysis* takes a large amount
 of time per document, it may be worth evaluating how far down the

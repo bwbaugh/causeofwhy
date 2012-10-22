@@ -14,6 +14,7 @@ import operator
 import codecs
 import re
 import string
+import math
 try:
     import cPickle as pickle
 except ImportError:
@@ -88,6 +89,7 @@ class Page:
         self.start = start
         self.sentences = None
         self.token_count = None
+        self.cosine_sim = None
 
     def remove_markup(self):
         """Remove wiki markup leaving just the plain-text."""
@@ -194,7 +196,7 @@ class Index:
                     ID, token_counts = line.split('\t', 1)
                     for token_count in token_counts.split('\t'):
                         token, count = token_count.split(chr(26))
-                        self.doci[ID][token] = count
+                        self.doci[int(ID)][token] = int(count)
             if not self.doci:
                 raise IndexLoadError
         except IOError:
@@ -259,6 +261,51 @@ class Index:
                 ID = self.toki[term]
                 pages.intersection_update(ID)
         return self.get_page(pages)
+
+    def ranked(self, terms):
+        """Returns a ranked list of Pages based on similarity to a query."""
+        q_tfidf = Index.query_tfidf(terms)
+        pages = self.union(terms)
+        ranked_pages = dict()
+        for page in pages:
+            # Calculate document TF-IDF
+            d_tfidf = dict()
+            max_count = max(self.doci[page.ID].itervalues())
+            for term in self.doci[page.ID]:
+                tf = self.doci[page.ID][term] / max_count
+                idf = math.log(len(self.doci) / len(self.toki[term]))
+                d_tfidf[term] = tf * idf
+            # Calculate inner product
+            inner_product = 0
+            for term in terms:
+                if term in self.doci[page.ID]:
+                    inner_product += q_tfidf[term] * d_tfidf[term]
+            # Calculate query length
+            query_length = 0
+            for term in q_tfidf:
+                query_length += q_tfidf[term] ** 2
+            query_length = math.sqrt(query_length)
+            # Calculate document length
+            doc_length = 0
+            for term in d_tfidf:
+                doc_length += d_tfidf[term] ** 2
+            doc_length = math.sqrt(doc_length)
+            # Calculate the cosine similarity
+            cosine_sim = inner_product / (query_length * doc_length)
+            page.cosine_sim = cosine_sim
+            ranked_pages[page] = cosine_sim
+        ranked_pages = sorted(ranked_pages.iteritems(),
+                              key=operator.itemgetter(1), reverse=True)
+        return [page for page, sim in ranked_pages]
+
+    @staticmethod
+    def query_tfidf(terms):
+        """Returns the {term: TF-IDF} dict for a query vector."""
+        token_count = collections.defaultdict(int)
+        for term in terms:
+            token_count[term] += 1
+        max_count = max(token_count.itervalues())
+        return {term: token_count[term] / max_count for term in token_count}
 
 
 # FUNCTIONS

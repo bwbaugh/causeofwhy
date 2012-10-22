@@ -69,18 +69,18 @@ table#search td {
     <h1>Cause of Why</h1>
     Query: {{ escape(query) }}<br>
     Modified Query: {{ escape(ir_query) }}<br>
+    Results: {{ num_results }}<br>
     <table id="search">
     <tr>
         <th>Rank</th>
-        <th>ID and Title</th>
+        <th>Page</th>
         <th>Answer</th>
     </tr>
     {% for position, answer in enumerate(answers, start=1) %}
     <tr>
         <td>{{ position }}</td>
-        <td>{{ escape(str(answer.ID) + ' ' + answer.title) }}</td>
-        <td>{% raw '<br>'.join([' '.join(sent) for sent in
-                            answer.sentences]) %}</td>
+        <td><a href="http://simple.wikipedia.org/?curid={{ answer.ID }}" title="{{ '{:.2%}'.format(answer.cosine_sim) }}">{{ answer.title }}</a></td>
+        <td>{% raw '<br>'.join([' '.join(sent) for sent in answer.sentences]) %}</td>
     </tr>
     {% end %}
     </table>
