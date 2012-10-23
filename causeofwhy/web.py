@@ -75,7 +75,7 @@ def main(index):
         static_path=os.path.join(os.path.dirname(__file__), "static"),
         index=index,
         pool=pool)
-    http_server = tornado.httpserver.HTTPServer(application)
+    http_server = tornado.httpserver.HTTPServer(application, xheaders=True)
     http_server.listen(8080)
     tornado.ioloop.IOLoop.instance().start()
 
