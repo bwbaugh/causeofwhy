@@ -1,10 +1,6 @@
 # Copyright (C) 2012 Brian Wesley Baugh
 """Main program to start the Cause of Why QA system."""
 import sys
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO
 
 from causeofwhy import indexer, web
 
@@ -17,27 +13,9 @@ wiki_location = 'R:/_Other/Wikipedia/simplewiki-20121002-pages-articles.xml'
 # wiki_location = 'C:/wiki/simplewiki-20121002-pages-articles.xml'
 
 
-def page_list(page):
-    try:
-        iterator = iter(page)
-    except TypeError:
-        page.unidecode()
-        return ' '.join([str(page.ID), page.title])
-    else:
-        f = StringIO()
-        for page in iterator:
-            page.unidecode()
-            f.write(' '.join([str(page.ID), page.title]) + '\n')
-        output = f.getvalue().rstrip()
-        f.close()
-        return output
-
-
 def main():
     print 'Loading index'
     index = indexer.create_index(wiki_location)
-    # while True:
-    #     print input('>>> ')
     print 'Starting web server'
     web.main(index)
 
