@@ -16,7 +16,7 @@ div#wrapper {
 }
 
 div#header {
-    padding: 106px 0px 40px 0px;
+    /*padding: 106px 0px 40px 0px;*/
     /*background-image: url(images/header.jpg);*/
     background-repeat: no-repeat;
     color: #ffffff;
