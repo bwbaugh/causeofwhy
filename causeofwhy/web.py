@@ -3,6 +3,7 @@
 import os
 import tornado.ioloop
 import tornado.web
+import tornado.httpserver
 
 from causeofwhy import indexer
 
@@ -53,7 +54,8 @@ def main(index):
         (r"/cause/", QueryHandler, dict(index=index)),
         ], template_path=os.path.join(os.path.dirname(__file__), "templates"),
         static_path=os.path.join(os.path.dirname(__file__), "static"))
-    application.listen(8888)
+    http_server = tornado.httpserver.HTTPServer(application)
+    http_server.listen(8080)
     tornado.ioloop.IOLoop.instance().start()
 
 if __name__ == "__main__":
