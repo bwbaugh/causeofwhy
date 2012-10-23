@@ -1,73 +1,24 @@
 <!doctype html>
 <head>
-	<meta charset="utf-8">
-	<title>Cause of Why | Causal Question Answering (QA) System</title>
-	<link href='http://fonts.googleapis.com/css?family=Source+Sans+Pro' rel='stylesheet' type='text/css'>
-	<style media="screen" type="text/css">
-	body {
-		/*background-image: url(images/background.jpg);*/
-		background-color: darkgray;
-		font-family: 'Source Sans Pro', Verdana, Geneva, sans-serif;
-		font-size: 18px;
-	}
-
-	h1 	{
-		color: black;
-	}
-
-	div#wrapper {
-		margin-left: auto;
-		margin-right: auto;
-		width: 980px;
-	}
-
-	div#header {
-		padding: 106px 0px 40px 0px;
-		/*background-image: url(images/header.jpg);*/
-		background-repeat: no-repeat;
-		color: #ffffff;
-		text-align: center;
-	}
-
-	div#mainbody {
-		background-color: #f3f3f3;
-		padding: 40px 30px 0px 50px;
-		height: 300px;
-	}
-
-	table#search {
-		overflow:hidden;
-		border:1px solid #4f853e;
-		background:#f3f3f3;
-		width:70%;
-		margin:5% auto 0;
-		border-radius:5px;
-		padding: 5px 15px;
-	}
-
-	table#search th {
-		color: #4f853e;
-	}
-	#query {
-		font-size: 32px;
-	}
-	</style>
-
+    <meta charset="utf-8">
+    <title>Cause of Why | Causal Question Answering (QA) System</title>
+    <link href='http://fonts.googleapis.com/css?family=Source+Sans+Pro' rel='stylesheet' type='text/css'>
+    <link rel=StyleSheet href="{{ static_url("style.css") }}" type="text/css" media=screen>
 </head>
 
 <body>
-	<div id="wrapper">
-		<div id="header">
+    <div id="wrapper">
+        <div id="header">
 
-		</div>
-		<div id="mainbody">
-			<h1>Cause of Why</h1>
-			<form action="cause/" method="get">
-				<input id="query" name="query" type="text" size="40" /><br>
-				<input value="Cause of Why?" type="submit" />
-			</form>
+        </div>
+        <div id="mainbody">
+            <h1>Cause of Why</h1>
+            <form action="cause/" method="get">
+                <input id="query" name="query" type="text" size="40" /><br>
+                <input value="Cause of Why?" type="submit" />
+            </form>
 
-		</div>
-	</div>
+        </div>
+    </div>
 </body>
 </html>

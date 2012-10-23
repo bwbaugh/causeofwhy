@@ -3,61 +3,7 @@
     <meta charset="utf-8">
     <title>Cause of Why | Causal Question Answering (QA) System</title>
     <link href='http://fonts.googleapis.com/css?family=Source+Sans+Pro' rel='stylesheet' type='text/css'>
-    <style media="screen" type="text/css">
-    body {
-        /*background-image: url(images/background.jpg);*/
-        background-color: darkgray;
-        font-family: 'Source Sans Pro', Verdana, Geneva, sans-serif;
-        font-size: 18px;
-    }
-
-    h1  {
-        color: black;
-    }
-
-    div#wrapper {
-        margin-left: auto;
-        margin-right: auto;
-        width: 980px;
-    }
-
-    div#header {
-        padding: 106px 0px 40px 0px;
-        /*background-image: url(images/header.jpg);*/
-        background-repeat: no-repeat;
-        color: #ffffff;
-        text-align: center;
-    }
-
-div#mainbody {
-            background-color: #f3f3f3;
-            padding: 40px 30px 0px 50px;
-            height: 100%;
-            }
-
-table#search {
-    overflow:hidden;
-    border:1px solid #4f853e;
-    background:#f3f3f3;
-    width:80%;
-    margin:5% auto 0;
-    border-radius:5px;
-    padding: 5px 15px;
-            }
-
-table#search th {
-                color: #4f853e;
-                }
-table#search td {
-                border-bottom:1px solid #4f853e;
-                }
-.relevancy {
-    float: left;
-    background-color: #4f853e;
-    height: 10px;
-}
-        </style>
-
+    <link rel=StyleSheet href="{{ static_url("style.css") }}" type="text/css" media=screen>
 </head>
 
 <body>
@@ -66,25 +12,25 @@ table#search td {
 
     </div>
     <div id="mainbody">
-    <h1>Cause of Why</h1>
-    Query: {{ escape(query) }}<br>
-    Modified Query: {{ escape(ir_query) }}<br>
-    Results: {{ num_results }}<br>
-    <table id="search">
-    <tr>
-        <th>Rank</th>
-        <th>Page</th>
-        <th>Answer</th>
-    </tr>
-    {% for position, answer in enumerate(answers, start=1) %}
-    <tr>
-        <td>{{ position }}</td>
-        <td><a href="http://simple.wikipedia.org/?curid={{ answer.ID }}" title="{{ '{:.2%}'.format(answer.cosine_sim) }}">{{ answer.title }}</a></td>
-        <td>{% raw '<br>'.join([' '.join(sent) for sent in answer.sentences]) %}</td>
-    </tr>
-    {% end %}
-    </table>
+        <h1>Cause of Why</h1>
+        Query: {{ escape(query) }}<br>
+        Modified Query: {{ escape(ir_query) }}<br>
+        Results: {{ num_results }}<br>
+        <table id="search">
+            <tr>
+                <th>Rank</th>
+                <th>Page</th>
+                <th>Answer</th>
+            </tr>
+            {% for position, answer in enumerate(answers, start=1) %}
+            <tr>
+                <td>{{ position }}</td>
+                <td><a href="http://simple.wikipedia.org/?curid={{ answer.ID }}" title="{{ '{:.2%}'.format(answer.cosine_sim) }}">{{ answer.title }}</a></td>
+                <td>{% raw '<br>'.join([' '.join(sent) for sent in answer.sentences]) %}</td>
+            </tr>
+            {% end %}
+        </table>
     </div>
- </div>
+</div>
 </body>
 </html>

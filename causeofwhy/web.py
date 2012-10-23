@@ -51,8 +51,8 @@ def main(index):
     application = tornado.web.Application([
         (r"/", MainHandler),
         (r"/cause/", QueryHandler, dict(index=index)),
-        ], template_path=os.path.join(os.path.dirname(__file__),
-                                      "templates"))
+        ], template_path=os.path.join(os.path.dirname(__file__), "templates"),
+        static_path=os.path.join(os.path.dirname(__file__), "static"))
     application.listen(8888)
     tornado.ioloop.IOLoop.instance().start()
 
