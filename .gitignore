@@ -5,6 +5,9 @@
 # Library folder
 lib/
 
+# Configuration file
+causeofwhy.ini
+
 # Pickled files
 *.pickle
 
