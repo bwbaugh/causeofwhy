@@ -26,7 +26,7 @@ class QueryHandler(tornado.web.RequestHandler):
 
     @tornado.web.asynchronous
     def get(self):
-        query = self.get_argument('query')
+        query = self.get_argument('q')
         num_top = int(self.get_argument('top', default=10))
         start = int(self.get_argument('start', default=0))
         ir_query = indexer.tokenizer.tokenize(query)
