@@ -18,7 +18,7 @@ def create_default_config():
         config.write(f)
 
 
-def main():
+def read_config():
     config = ConfigParser.SafeConfigParser()
     try:
         with open(CONFIG_FNAME) as f:
@@ -29,7 +29,12 @@ def main():
         print 'Configuration file not found! Creating one...'
         create_default_config()
         print 'Please edit the config file named: ' + CONFIG_FNAME
-        return errno.ENOENT
+        sys.exit(errno.ENOENT)
+    return config
+
+
+def main():
+    config = read_config()
     print 'Loading index'
     try:
         index = indexer.Index(config.get('wiki', 'location'))
