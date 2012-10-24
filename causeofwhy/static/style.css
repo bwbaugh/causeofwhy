@@ -1,7 +1,7 @@
 body {
     /*background-image: url(images/background.jpg);*/
     background-color: darkgray;
-    font-family: 'Source Sans Pro', Verdana, Geneva, sans-serif;
+    font-family: Verdana, Geneva, sans-serif;
     font-size: 18px;
 }
 
@@ -12,7 +12,7 @@ h1 {
 div#wrapper {
     margin-left: auto;
     margin-right: auto;
-    width: 980px;
+    width: 90%;
 }
 
 div#header {
@@ -33,7 +33,7 @@ table#search {
     overflow:hidden;
     border:1px solid #4f853e;
     background:#f3f3f3;
-    width:80%;
+    width:100%;
     margin:5% auto 0;
     border-radius:5px;
     padding: 5px 15px;
