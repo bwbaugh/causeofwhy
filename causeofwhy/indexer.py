@@ -166,11 +166,14 @@ class Index:
     Individual page objects can be retrieved from disk, or a set of
     pages that match a term list (either by union or intersection).
     """
-    def __init__(self, base_fname):
+    def __init__(self, base_fname, doci_in_memory=False):
         """Loads all indices for the base_fname Wikipedia dump."""
         self.base_fname = base_fname
         self.load_pagi()
-        self.load_doci()
+        if doci_in_memory:
+            self.load_doci()
+        else:
+            self.doci = DocI(self)
         self.load_tokc()
         self.load_toki()
 
@@ -188,7 +191,7 @@ class Index:
             raise IndexLoadError
 
     def load_doci(self):
-        """Load the document index. {page.ID -> page.token_count}"""
+        """Load the document index {page.ID -> page.token_count} in memory"""
         self.doci = collections.defaultdict(dict)
         try:
             with codecs.open(self.base_fname + '.doci', encoding='utf-8') as f:
@@ -270,15 +273,16 @@ class Index:
         for ID in pages:
             # Calculate document TF-IDF
             d_tfidf = dict()
-            max_count = max(self.doci[ID].itervalues())
-            for term in self.doci[ID]:
-                tf = self.doci[ID][term] / max_count
+            token_counts = self.doci[ID]
+            max_count = max(token_counts.itervalues())
+            for term in token_counts:
+                tf = token_counts[term] / max_count
                 idf = math.log(len(self.doci) / len(self.toki[term]))
                 d_tfidf[term] = tf * idf
             # Calculate inner product
             inner_product = 0
             for term in terms:
-                if term in self.doci[ID]:
+                if term in token_counts:
                     inner_product += q_tfidf[term] * d_tfidf[term]
             # Calculate query length
             query_length = 0
@@ -305,6 +309,51 @@ class Index:
             token_count[term] += 1
         max_count = max(token_count.itervalues())
         return {term: token_count[term] / max_count for term in token_count}
+
+
+class DocI:
+    """Wrapper class around the .doci index file; allows for doci[ID].
+
+    This class allows the .doci {page.ID -> page.token_count} index to
+    stay on disk without having to load the entire file into memory.
+    There is a memory-speed tradeoff, but the speed lost with respect to
+    the amount of memory saved for larger corpora will be noticeable.
+
+    IMPORTANT: Save the resulting dictionary of a doci[Page.ID] call locally!
+    Because the dictionary has to be created for every __getitem__()
+    call, the operation becomes exponentially expensive!
+    """
+    def __init__(self, index):
+        self.index = index
+        # Make sure the file can open and at least the first line is parsable.
+        try:
+            with codecs.open(self.index.base_fname + '.doci',
+                             encoding='utf-8') as f:
+                line = f.readline()
+                ID, token_counts = line.split('\t', 1)
+                for token_count in token_counts.split('\t'):
+                    token, count = token_count.split(chr(26))
+                    ID, count = int(ID), int(count)
+        except IOError:
+            raise IndexLoadError
+
+    def __getitem__(self, ID):
+        """Retrieve the dictionary result of: {page.ID -> page.token_count}"""
+        counts = dict()
+        with codecs.open(self.index.base_fname + '.doci',
+                         encoding='utf-8') as f:
+                start, offset = self.index.pagi[ID]
+                f.seek(offset)
+                line = f.readline()
+        ID, token_counts = line.split('\t', 1)
+        for token_count in token_counts.split('\t'):
+            token, count = token_count.split(chr(26))
+            counts[token] = int(count)
+        return counts
+
+    def __len__(self):
+        """Returns the equivalent length of self.index.pagi"""
+        return len(self.index.pagi)
 
 
 # FUNCTIONS
@@ -499,14 +548,8 @@ def create_punkt_sent_detector(fname, progress_count, max_pages=25000):
 
 
 # Main function of module
-def create_index(fname, progress_count=None, max_pages=None, skip_exists=True):
+def create_index(fname, progress_count=None, max_pages=None):
     logger = logging.getLogger('create_index')
-
-    if skip_exists:
-        try:
-            return Index(base_fname=fname)
-        except IndexLoadError:
-            pass
 
     if sent_detector is None:
         create_punkt_sent_detector(fname=fname,
@@ -574,5 +617,3 @@ def create_index(fname, progress_count=None, max_pages=None, skip_exists=True):
     # Wait for all child processes to stop (especially that writer!)
     for p in workers:
         p.join()
-
-    return Index(base_fname=fname)

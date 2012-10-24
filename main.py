@@ -31,7 +31,11 @@ def main():
         print 'Please edit the config file named: ' + CONFIG_FNAME
         return errno.ENOENT
     print 'Loading index'
-    index = indexer.create_index(config.get('wiki', 'location'))
+    try:
+        index = indexer.Index(config.get('wiki', 'location'))
+    except indexer.IndexLoadError:
+        indexer.create_index(config.get('wiki', 'location'))
+        index = indexer.Index(config.get('wiki', 'location'))
     print 'Starting web server'
     web.main(index)
 
