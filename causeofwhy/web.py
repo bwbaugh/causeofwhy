@@ -35,7 +35,8 @@ class QueryHandler(tornado.web.RequestHandler):
         self.query = self.get_argument('q')
         num_top = int(self.get_argument('top', default=1))
         start = int(self.get_argument('start', default=0))
-        self.ans_eng = AnswerEngine(self.index, self.query, start, num_top)
+        lch = float(self.get_argument('lch', default=2.16))
+        self.ans_eng = AnswerEngine(self.index, self.query, start, num_top, lch)
         self.pool.apply_async(answer_engine.get_answers, (self.ans_eng,),
                               callback=self.callback)
 
@@ -50,7 +51,7 @@ class QueryHandler(tornado.web.RequestHandler):
 def main(index):
     pool = multiprocessing.Pool(NUMBER_OF_PROCESSES)
     # Give each pool initial piece of work so that they initialize.
-    ans_eng = AnswerEngine(index, 'test', 0, 1)
+    ans_eng = AnswerEngine(index, 'test', 0, 1, 2.16)
     for x in xrange(NUMBER_OF_PROCESSES):
         pool.apply_async(answer_engine.get_answers, (ans_eng,))
     del ans_eng
