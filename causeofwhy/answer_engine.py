@@ -1,5 +1,8 @@
 # Copyright (C) 2012 Brian Wesley Baugh
 """Provides document analysis and answer extraction functions and classes."""
+import nltk
+from nltk.corpus import wordnet
+
 import indexer
 
 
@@ -9,6 +12,11 @@ class AnswerEngine(object):
     Attributes:
         query: The direct query string from the user.
         ir_query: The regularize string sent to the IR index.
+        ir_query_tagged: The IR query string that has each possible
+            WordNet sense associated with each tokenized word. This
+            can then be displayed to the user, and in a future update
+            this class could use the disambiguated word sense to
+            improve the answer extraction process.
         num_pages: The number of pages returned by the IR search.
         pages: Ranked list of Page objects returned by the IR search.
             The number of pages is usually less than num_pages unless
@@ -37,6 +45,7 @@ class AnswerEngine(object):
         # Candidate Document Selection
         self.ir_query = indexer.regularize(indexer.tokenizer.tokenize(self
                                                                       .query))
+        self.ir_query_tagged = None
         page_sim = index.ranked(self.ir_query)
         self.num_pages = len(page_sim)
         # Reduce number of pages we need to get from disk
@@ -47,6 +56,26 @@ class AnswerEngine(object):
         # Tell each page the value of its similarity score
         for page, sim in zip(self.pages, similarity):
             page.cosine_sim = sim
+
+    def _analyze_query(self):
+        """Creates the ir_query_tagged attribute."""
+        tagged = nltk.pos_tag(self.ir_query)
+        ir_query_tagged = []
+        for word, pos in tagged:
+            pos = {
+                pos.startswith('N'): wordnet.NOUN,
+                pos.startswith('V'): wordnet.VERB,
+                pos.startswith('J'): wordnet.ADJ,
+                pos.startswith('R'): wordnet.ADV,
+                }.get(pos, None)
+            if pos:
+                synsets = wordnet.synsets(word, pos=pos)
+            else:
+                synsets = wordnet.synsets(word)
+            ir_query_tagged.append((word, synsets))
+        # Add additional special hidden term
+        ir_query_tagged.append(('cause', [wordnet.synset('cause.v.01')]))
+        self.ir_query_tagged = ir_query_tagged
 
     def _analyze_pages(self):
         """Performs candidate document analysis and information extraction."""
@@ -59,14 +88,38 @@ class AnswerEngine(object):
 
         This method should be run only after _analyze_pages().
         """
+        def sentence_matches(sentence):
+            """Make sure every query term has a match in the sentence."""
+            def related(synsets, word2):
+                """Check if two words have related synsets."""
+                for net1 in synsets:
+                    for net2 in wordnet.synsets(word2):
+                        try:
+                            lch = net1.lch_similarity(net2)
+                        except:
+                            continue
+                        # The value to compare the LCH to was found empirically.
+                        if lch >= 2:
+                            return True
+                return False
+
+            for term, synsets in self.ir_query_tagged:
+                match = False
+                for page_term in indexer.regularize(sentence):
+                    if term == page_term or related(synsets, page_term):
+                        match = True
+                        break
+                if not match:
+                    return False
+            return True
+
         answers = []
         for page in self.pages:
             page_windows = []
             for sentence in page.sentences:
-                if len(page_windows) == 3:
-                    break
-                if any(term in indexer.regularize(sentence) for term in
-                       self.ir_query):
+                # if len(page_windows) == 3:
+                #     break
+                if sentence_matches(sentence):
                     page_windows.append(Answer(page, ' '.join(sentence)))
             answers.extend(page_windows)
         self.answers = answers
@@ -83,6 +136,7 @@ class AnswerEngine(object):
             from the internal list of (relevant) Pages. This list is also
             available by accessing the answers attribute of the instance.
         """
+        self._analyze_query()
         self._analyze_pages()
         self._extract_answers()
         return self.answers
