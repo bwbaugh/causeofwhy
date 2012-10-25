@@ -7,7 +7,8 @@ import tornado.ioloop
 import tornado.web
 import tornado.httpserver
 
-from causeofwhy import indexer
+import answer_engine
+from answer_engine import AnswerEngine
 
 
 # How many page worker threads to use
@@ -21,49 +22,29 @@ class MainHandler(tornado.web.RequestHandler):
 
 class QueryHandler(tornado.web.RequestHandler):
     def initialize(self):
-        self.index = self.application.settings.get('index')
         self.pool = self.application.settings.get('pool')
+        self.index = self.application.settings.get('index')
+
+    def prepare(self):
+        self.query = None
+        self.num_top = None
+        self.ans_eng = None
 
     @tornado.web.asynchronous
     def get(self):
-        query = self.get_argument('q')
+        self.query = self.get_argument('q')
         num_top = int(self.get_argument('top', default=10))
         start = int(self.get_argument('start', default=0))
-        ir_query = indexer.tokenizer.tokenize(query)
-        ir_query = indexer.regularize(ir_query)
-        answers = self.index.ranked(ir_query)
-        num_results = len(answers)
-        # Reduce number of pages we need to get from disk
-        answers = answers[start:num_top]
-        answers, similarity = zip(*answers)
-        # Retrieve the Page objects from the list of Page.IDs
-        answers = self.index.get_page(answers)
-        args = (answers, similarity, query, ir_query, num_results, answers)
-        self.pool.apply_async(handle_answers, (args,), callback=self.callback)
+        self.ans_eng = AnswerEngine(self.index, self.query, start, num_top)
+        self.pool.apply_async(answer_engine.get_answers, (self.ans_eng,),
+                              callback=self.callback)
 
-    def callback(self, result):
-        query, ir_query, num_results, answers = result
+    def callback(self, answers):
         self.render("answer.html",
-                    query=query,
-                    ir_query=' '.join(ir_query),
-                    num_results=num_results,
+                    query=self.query,
+                    ir_query=' '.join(self.ans_eng.ir_query),
+                    num_pages=self.ans_eng.num_pages,
                     answers=answers)
-
-
-def handle_answers(args):
-        answers, similarity, query, ir_query, num_results, answers = args
-        for answer, sim in zip(answers, similarity):
-            answer.cosine_sim = sim
-            answer.preprocess()
-            answer.tokenize_sentences()
-            sentences = []
-            for sentence in answer.sentences:
-                if (len(sentences) < 3 and
-                   any(term in indexer.regularize(sentence) for term
-                       in ir_query)):
-                    sentences.append(sentence)
-            answer.sentences = sentences
-        return query, ir_query, num_results, answers
 
 
 def main(index):

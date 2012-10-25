@@ -14,7 +14,7 @@
         <h1>Cause of Why</h1>
         Query: {{ escape(query) }}<br>
         Modified Query: {{ escape(ir_query) }}<br>
-        Results: {{ num_results }}<br>
+        Matching Pages: {{ num_pages }}<br>
         <table id="search">
             <tr>
                 <th>Rank</th>
@@ -24,8 +24,8 @@
             {% for position, answer in enumerate(answers, start=1) %}
             <tr>
                 <td>{{ position }}</td>
-                <td><a href="http://simple.wikipedia.org/?curid={{ answer.ID }}" title="{{ '{:.2%}'.format(answer.cosine_sim) }}">{{ answer.title }}</a></td>
-                <td>{% raw '<br>'.join([' '.join(sent) for sent in answer.sentences]) %}</td>
+                <td><a href="http://simple.wikipedia.org/?curid={{ answer.page.ID }}" title="{{ '{:.2%}'.format(answer.page.cosine_sim) }}">{{ answer.page.title }}</a></td>
+                <td>{{ answer.text }}</td>
             </tr>
             {% end %}
         </table>
