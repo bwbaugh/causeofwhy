@@ -33,14 +33,18 @@ def read_config():
     return config
 
 
+def load_index(wiki_location, doci_in_memory=True):
+    try:
+        return indexer.Index(wiki_location, doci_in_memory)
+    except indexer.IndexLoadError:
+        indexer.create_index(wiki_location)
+        return indexer.Index(wiki_location, doci_in_memory)
+
+
 def main():
     config = read_config()
     print 'Loading index'
-    try:
-        index = indexer.Index(config.get('wiki', 'location'))
-    except indexer.IndexLoadError:
-        indexer.create_index(config.get('wiki', 'location'))
-        index = indexer.Index(config.get('wiki', 'location'))
+    index = load_index(config.get('wiki', 'location'))
     print 'Starting web server'
     web.main(index)
 
