@@ -33,7 +33,7 @@ class QueryHandler(tornado.web.RequestHandler):
     @tornado.web.asynchronous
     def get(self):
         self.query = self.get_argument('q')
-        num_top = int(self.get_argument('top', default=10))
+        num_top = int(self.get_argument('top', default=1))
         start = int(self.get_argument('start', default=0))
         self.ans_eng = AnswerEngine(self.index, self.query, start, num_top)
         self.pool.apply_async(answer_engine.get_answers, (self.ans_eng,),
