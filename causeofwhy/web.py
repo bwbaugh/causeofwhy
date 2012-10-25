@@ -39,10 +39,12 @@ class QueryHandler(tornado.web.RequestHandler):
         self.pool.apply_async(answer_engine.get_answers, (self.ans_eng,),
                               callback=self.callback)
 
-    def callback(self, answers):
+    def callback(self, args):
+        answers, ir_query_tagged = args
         self.render("answer.html",
                     query=self.query,
                     ir_query=' '.join(self.ans_eng.ir_query),
+                    ir_query_tagged=ir_query_tagged,
                     num_pages=self.ans_eng.num_pages,
                     answers=answers)
 

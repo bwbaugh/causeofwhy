@@ -180,7 +180,7 @@ class Answer:
 
 
 def get_answers(ans_eng):
-    """Calls the get_answers() method of the provided AnswerEngine object.
+    """Used to retrieve answers from an AnswerEngine and the query synsets.
 
     This is a convenience method for the multiprocessing module, as that
     module is unable to pickle bound methods (methods belonging to class
@@ -191,6 +191,15 @@ def get_answers(ans_eng):
         ans_eng: The AnswerEngine object to call get_answers() on.
 
     Returns:
-        The list of Answer objects provided by the AnswerEngine.
+        A tuple containing the list of Answer objects provided by the
+        AnswerEngine and a modified ir_query_tagged attribute. The
+        modified ir_query_tagged is list of tuples that have a term and
+        another tuple of synsets. The synsets tuple contains the name of
+        the synset and the definition of the synset.
     """
-    return ans_eng.get_answers()
+    ans_eng.get_answers()
+    ir_query_tagged = []
+    for term, synsets in ans_eng.ir_query_tagged[:-1]:
+        synsets = [(net.name, net.definition) for net in synsets]
+        ir_query_tagged.append((term, synsets))
+    return ans_eng.answers, ir_query_tagged

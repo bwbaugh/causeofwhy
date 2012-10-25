@@ -12,9 +12,9 @@
     </div>
     <div id="mainbody">
         <h1>Cause of Why</h1>
-        Query: {{ escape(query) }}<br>
-        Modified Query: {{ escape(ir_query) }}<br>
-        Matching Pages: {{ num_pages }}<br>
+        <strong>Query:</strong> {{ escape(query) }}<br>
+        <strong>Modified Query:</strong> {{ escape(ir_query) }}<br>
+        <strong>Matching Pages:</strong> {{ num_pages }}
         <table id="search">
             <tr>
                 <th>Rank</th>
@@ -29,6 +29,13 @@
             </tr>
             {% end %}
         </table>
+        <strong>Disambiguation:</strong>
+        {% for word, synsets in ir_query_tagged %}<br>
+        <em>{{ word }}:</em>
+        <select>
+            <option value="any">- any sense -</option>{% for name, definition in synsets %}
+            <option value="{{ name }}">{{ definition }}</option>{% end %}
+        </select>{% end %}
     </div>
 </div>
 </body>
