@@ -11,12 +11,28 @@ class AnswerEngine(object):
 
     Attributes:
         query: The direct query string from the user.
-        ir_query: The regularize string sent to the IR index.
+        start: The number of pages to offset from the beginning of the
+            page list returned by the index.
+        num_top: The number of pages (from the top of the ranked list
+            of pages (sorted by similarity) returned by the index) to
+            extract answers from.
+            Combined withe the start-argument, this allows for paging
+            through the results by only looking at a certain number of
+            pages at a time.
+        lch: The Leacock-Chodorow Similarity measurement. Used to
+            determine if two WordNet senses (synsets) are related.
+            The default value has been empirically determined to
+            provide good results, though it may be fine-tuned. This
+            attribute is a float.
+        ir_query: The regularized string sent to the IR index. It is
+            a list of tokens.
         ir_query_tagged: The IR query string that has each possible
             WordNet sense associated with each tokenized word. This
             can then be displayed to the user, and in a future update
             this class could use the disambiguated word sense to
-            improve the answer extraction process.
+            improve the answer extraction process. This attribute is a
+            list of tuples. Each tuple contains the word in the first
+            position, followed by a list of WordNet Synset objects.
         num_pages: The number of pages returned by the IR search.
         pages: Ranked list of Page objects returned by the IR search.
             The number of pages is usually less than num_pages unless
@@ -39,13 +55,19 @@ class AnswerEngine(object):
                 Combined withe the start-argument, this allows for paging
                 through the results by only looking at a certain number of
                 pages at a time.
+            lch: The Leacock-Chodorow Similarity measurement. Used to
+                determine if two WordNet senses (synsets) are related.
+                The default value has been empirically determined to
+                provide good results, though it may be fine-tuned. This
+                argument should be a float.
         """
         self.query = query
+        self.start = start
+        self.num_top = num_top
         self.lch = lch
         self.answers = None
         # Candidate Document Selection
-        self.ir_query = indexer.regularize(indexer.tokenizer.tokenize(self
-                                                                      .query))
+        self.ir_query = indexer.regularize(indexer.tokenizer.tokenize(query))
         self.ir_query_tagged = None
         page_sim = index.ranked(self.ir_query)
         self.num_pages = len(page_sim)
@@ -59,7 +81,12 @@ class AnswerEngine(object):
             page.cosine_sim = sim
 
     def _analyze_query(self):
-        """Creates the ir_query_tagged attribute."""
+        """Creates the ir_query_tagged attribute.
+
+        The ir_query_tagged attribute is a list of tuples. Each tuple
+        contains the word in the first position, followed by a list of
+        Synset objects from WordNet.
+        """
         tagged = nltk.pos_tag(self.ir_query)
         ir_query_tagged = []
         for word, pos in tagged:

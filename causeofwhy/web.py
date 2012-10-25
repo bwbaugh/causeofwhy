@@ -27,7 +27,6 @@ class QueryHandler(tornado.web.RequestHandler):
 
     def prepare(self):
         self.query = None
-        self.num_top = None
         self.ans_eng = None
 
     @tornado.web.asynchronous
