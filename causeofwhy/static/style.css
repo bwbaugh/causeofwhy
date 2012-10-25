@@ -31,9 +31,9 @@ div#mainbody {
 
 table#search {
     overflow:hidden;
-    border:1px solid #4f853e;
-    background:#f3f3f3;
-    width:100%;
+    border: 1px solid #4f853e;
+    background: #f3f3f3;
+    width: 100%;
     margin: 3% auto 3% auto;
     border-radius:5px;
     padding: 5px 15px;
@@ -44,7 +44,7 @@ table#search th {
 }
 
 table#search td {
-    border-bottom:1px solid #4f853e;
+    border-bottom: 1px solid #4f853e;
 }
 
 #query {
