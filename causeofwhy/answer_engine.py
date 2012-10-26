@@ -111,43 +111,43 @@ class AnswerEngine(object):
             page.preprocess()
             page.tokenize_sentences()
 
+    def related(self, synsets, word2):
+        """Check if two words have related synsets."""
+        for net1 in synsets:
+            for net2 in wordnet.synsets(word2):
+                try:
+                    lch = net1.lch_similarity(net2)
+                except:
+                    continue
+                # The value to compare the LCH to was found empirically.
+                if lch >= self.lch:
+                    return True
+        return False
+
+    def sentence_matches(self, sentence):
+        """Make sure every query term has a match in the sentence."""
+        for term, synsets in self.ir_query_tagged:
+            match = False
+            for page_term in indexer.regularize(sentence):
+                if term == page_term or self.related(synsets, page_term):
+                    match = True
+                    break
+            if not match:
+                return False
+        return True
+
     def _extract_answers(self):
         """Extract answers from the pages using all the tagged information.
 
         This method should be run only after _analyze_pages().
         """
-        def sentence_matches(sentence):
-            """Make sure every query term has a match in the sentence."""
-            def related(synsets, word2):
-                """Check if two words have related synsets."""
-                for net1 in synsets:
-                    for net2 in wordnet.synsets(word2):
-                        try:
-                            lch = net1.lch_similarity(net2)
-                        except:
-                            continue
-                        # The value to compare the LCH to was found empirically.
-                        if lch >= self.lch:
-                            return True
-                return False
-
-            for term, synsets in self.ir_query_tagged:
-                match = False
-                for page_term in indexer.regularize(sentence):
-                    if term == page_term or related(synsets, page_term):
-                        match = True
-                        break
-                if not match:
-                    return False
-            return True
-
         answers = []
         for page in self.pages:
             page_windows = []
             for sentence in page.sentences:
                 # if len(page_windows) == 3:
                 #     break
-                if sentence_matches(sentence):
+                if self.sentence_matches(sentence):
                     page_windows.append(Answer(page, ' '.join(sentence)))
             answers.extend(page_windows)
         self.answers = answers
