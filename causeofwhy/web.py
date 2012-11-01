@@ -32,7 +32,7 @@ class QueryHandler(tornado.web.RequestHandler):
     @tornado.web.asynchronous
     def get(self):
         self.query = self.get_argument('q')
-        num_top = int(self.get_argument('top', default=1))
+        num_top = int(self.get_argument('top', default=5))
         start = int(self.get_argument('start', default=0))
         lch = float(self.get_argument('lch', default=2.16))
         self.ans_eng = AnswerEngine(self.index, self.query, start, num_top, lch)
@@ -52,8 +52,8 @@ class QueryHandler(tornado.web.RequestHandler):
 def main(index):
     pool = multiprocessing.Pool(NUMBER_OF_PROCESSES)
     # Give each pool initial piece of work so that they initialize.
-    ans_eng = AnswerEngine(index, 'test', 0, 1, 2.16)
-    for x in xrange(NUMBER_OF_PROCESSES):
+    ans_eng = AnswerEngine(index, 'bird sing', 0, 1, 2.16)
+    for x in xrange(NUMBER_OF_PROCESSES * 2):
         pool.apply_async(answer_engine.get_answers, (ans_eng,))
     del ans_eng
     application = tornado.web.Application([
