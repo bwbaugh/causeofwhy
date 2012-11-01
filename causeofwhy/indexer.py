@@ -26,10 +26,11 @@ except ImportError:
 
 
 # External packages and modules
+import WikiExtractor
+import gensim
 import nltk
 from nltk.corpus import stopwords
 from unidecode import unidecode
-import WikiExtractor
 
 
 # MODULE CONFIGURATION
@@ -169,6 +170,7 @@ class Index:
     def __init__(self, base_fname, doci_in_memory=False):
         """Loads all indices for the base_fname Wikipedia dump."""
         self.base_fname = base_fname
+        self.load_dict()
         self.load_pagi()
         if doci_in_memory:
             self.load_doci()
@@ -176,6 +178,18 @@ class Index:
             self.doci = DocI(self)
         self.load_tokc()
         self.load_toki()
+
+    def load_dict(self):
+        """Load the (gensim) Dictionary representing the vocabulary.
+
+        The Dictionary object is mainly a {token -> token_id} mapping,
+        but also contains {token_id -> document_frequency} information.
+        """
+        try:
+            self.dict = (gensim.corpora.dictionary.Dictionary().
+                         load_from_text(self.base_fname + '.dict'))
+        except IOError:
+            raise IndexLoadError
 
     def load_pagi(self):
         """Load the page index {page.ID -> page.start, doci.offset}"""
@@ -199,7 +213,7 @@ class Index:
                     ID, token_counts = line.split('\t', 1)
                     for token_count in token_counts.split('\t'):
                         token, count = token_count.split(chr(26))
-                        self.doci[int(ID)][token] = int(count)
+                        self.doci[int(ID)][int(token)] = int(count)
             if not self.doci:
                 raise IndexLoadError
         except IOError:
@@ -249,6 +263,10 @@ class Index:
     def union(self, terms):
         """Returns set of all Page.IDs that contain any term in the term list."""
         pages = set()
+        try:
+            terms = [self.dict.token2id[term] for term in terms]
+        except KeyError:
+            pass
         for term in terms:
             if term in self.toki:
                 ID = self.toki[term]
@@ -257,7 +275,10 @@ class Index:
 
     def intersect(self, terms):
         """Returns set of all Page.IDs that contain all terms in the term list."""
-        terms = list(terms)
+        try:
+            terms = [self.dict.token2id[term] for term in terms]
+        except KeyError:
+            terms = list(terms)
         pages = set(self.toki[terms.pop()])
         for term in terms:
             if term in self.toki:
@@ -267,7 +288,11 @@ class Index:
 
     def ranked(self, terms):
         """Returns a ranked list of tuples of Page.IDs and similarity value."""
-        q_tfidf = Index.query_tfidf(terms)
+        try:
+            terms = [self.dict.token2id[term] for term in terms]
+        except KeyError:
+            pass
+        q_tfidf = self.query_tfidf(terms)
         pages = self.union(terms)
         ranked_pages = dict()
         for ID in pages:
@@ -301,10 +326,13 @@ class Index:
                               key=operator.itemgetter(1), reverse=True)
         return ranked_pages
 
-    @staticmethod
-    def query_tfidf(terms):
+    def query_tfidf(self, terms):
         """Returns the {term: TF-IDF} dict for a query vector."""
         token_count = collections.defaultdict(int)
+        try:
+            terms = [self.dict.token2id[term] for term in terms]
+        except KeyError:
+            pass
         for term in terms:
             token_count[term] += 1
         max_count = max(token_count.itervalues())
@@ -333,7 +361,7 @@ class DocI:
                 ID, token_counts = line.split('\t', 1)
                 for token_count in token_counts.split('\t'):
                     token, count = token_count.split(chr(26))
-                    ID, count = int(ID), int(count)
+                    ID, token, count = int(ID), int(token), int(count)
         except IOError:
             raise IndexLoadError
 
@@ -348,7 +376,7 @@ class DocI:
         ID, token_counts = line.split('\t', 1)
         for token_count in token_counts.split('\t'):
             token, count = token_count.split(chr(26))
-            counts[token] = int(count)
+            counts[int(token)] = int(count)
         return counts
 
     def __len__(self):
@@ -464,10 +492,37 @@ def worker(taskq, doneq):
         doneq.put(None)
 
 
+def dictionary_writer(doneq, wiki_location):
+    pill_count = 0  # termination condition (poison pill)
+    dictionary = gensim.corpora.dictionary.Dictionary()
+    try:
+        # Begin processing chunks as they come in.
+        while True:
+            chunk = doneq.get()
+            if chunk is None:
+                pill_count += 1
+                if pill_count == NUMBER_OF_PROCESSES:
+                    return
+                else:
+                    continue
+            for page in chunk:
+                # Send all tokens from document to Dictionary
+                all_tokens = []
+                for sentence in page.sentences:
+                    all_tokens.extend(sentence)
+                dictionary.doc2bow(all_tokens, allow_update=True)
+    finally:
+        # Save token indices
+        dictionary.filter_extremes()
+        dictionary.save_as_text(wiki_location + '.dict')
+
+
 def writer(doneq, wiki_location):
     pill_count = 0  # termination condition (poison pill)
     token_docs = collections.defaultdict(set)
     token_counts = collections.defaultdict(int)
+    dictionary = (gensim.corpora.dictionary.Dictionary().
+                  load_from_text(wiki_location + '.dict'))
     try:
         with codecs.open(wiki_location + '.pagi',
                          mode='w',
@@ -485,12 +540,16 @@ def writer(doneq, wiki_location):
                     else:
                         continue
                 for page in chunk:
+                    # Remove tokens that don't appear in our Dictionary
+                    page.token_count = [(dictionary.token2id[t], c) for t, c in
+                                        page.token_count if t in
+                                        dictionary.token2id]
                     pagi.write('\t'.join([str(page.ID).ljust(1),
                                           str(page.start).ljust(1),
                                           str(doci.tell()).ljust(1)]) + '\n')
                     doci.write('\t'.join([str(page.ID)] +
-                                         [chr(26).join([k, str(v)]) for k, v in
-                                                        page.token_count]) +
+                                         [chr(26).join([str(k), str(v)]) for
+                                          k, v in page.token_count]) +
                                          '\n')
     #                txt.write('\t'.join([str(ID), title]) + '\n\n')
     #                for sentence in text:
@@ -547,6 +606,69 @@ def create_punkt_sent_detector(fname, progress_count, max_pages=25000):
         pickle.dump(sbd, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
+def create_dictionary(fname, progress_count=None, max_pages=None):
+    """Create a Dictionary by extracting the vocabulary from the corpus."""
+    logger = logging.getLogger('create_dictionary')
+
+    wiki_size = os.path.getsize(fname)
+
+    # Page task queues for parallel processing
+    taskq = multiprocessing.Queue(MAX_QUEUE_ITEMS)
+    doneq = multiprocessing.Queue(MAX_QUEUE_ITEMS)
+
+    # Start worker processes
+    logger.info('Starting workers')
+    workers = []
+    for i in range(NUMBER_OF_PROCESSES):
+        p = multiprocessing.Process(target=worker, args=(taskq, doneq))
+        p.start()
+        workers.append(p)
+
+    # Start log writer process
+    p = multiprocessing.Process(target=dictionary_writer, args=(doneq, fname))
+    p.start()
+    workers.append(p)
+
+    # Process XML dump
+    logger.info('Begining XML parse')
+
+    wiki_size = os.path.getsize(fname)
+    page_count = 0
+
+    task_buff = []
+    try:
+        with open(fname, mode='rb') as wiki_dump:
+            pages = page_generator(wiki_dump)
+            for page in pages:
+                task_buff.append(page)
+                if len(task_buff) == CHUNK_SIZE:
+                    taskq.put(task_buff)
+                    task_buff = []
+                page_count += 1
+                if page_count == max_pages:
+                    break
+                if page_count % progress_count == 0:
+                    print(page_count, page.start,
+                          (page.start / wiki_size * 100),
+                          taskq.qsize(), doneq.qsize(),
+                          page.ID, page.title)
+    except KeyboardInterrupt:
+        print 'KeyboardInterrupt: Stopping the reading of the dump early!'
+    finally:
+        # Flush task buffer
+        taskq.put(task_buff)
+        task_buff = []
+        # Tell child processes to stop
+        for i in range(NUMBER_OF_PROCESSES):
+            taskq.put(None)
+
+    logger.info('All done! Processed %s total pages.', page_count)
+
+    # Wait for all child processes to stop (especially that writer!)
+    for p in workers:
+        p.join()
+
+
 # Main function of module
 def create_index(fname, progress_count=None, max_pages=None):
     logger = logging.getLogger('create_index')
@@ -559,6 +681,15 @@ def create_index(fname, progress_count=None, max_pages=None):
     # Set params
     if progress_count is None:
         progress_count = CHUNK_SIZE * NUMBER_OF_PROCESSES
+
+    # First pass, create Dictionary
+    try:
+        dictionary = (gensim.corpora.dictionary.Dictionary().
+                      load_from_text(fname + '.dict'))
+    except IOError:
+        create_dictionary(fname, progress_count, max_pages)
+    else:
+        del dictionary
 
     wiki_size = os.path.getsize(fname)
 
