@@ -108,7 +108,6 @@ class AnswerEngine(object):
     def _analyze_pages(self):
         """Performs candidate document analysis and information extraction."""
         for page in self.pages:
-            page.preprocess()
             page.tokenize_sentences()
 
     def related(self, synsets, word2):
@@ -144,11 +143,12 @@ class AnswerEngine(object):
         answers = []
         for page in self.pages:
             page_windows = []
-            for sentence in page.sentences:
-                # if len(page_windows) == 3:
-                #     break
-                if self.sentence_matches(sentence):
-                    page_windows.append(Answer(page, ' '.join(sentence)))
+            for para in page.paragraphs:
+                for sentence in para.sentence_tokens:
+                    # if len(page_windows) == 3:
+                    #     break
+                    if self.sentence_matches(sentence):
+                        page_windows.append(Answer(page, ' '.join(sentence)))
             answers.extend(page_windows)
         self.answers = answers
 

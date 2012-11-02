@@ -62,13 +62,14 @@ STOPWORDS = [lemmatizer.lemmatize(t) for t in stopwords.words('english')]
 
 
 # CONSTANTS AND GLOBAL VARS
+LINE_SEPARATOR = u'\u2028'
 PARAGRAPH_SEPARATOR = u'\u2029'
 
 # Bad page checks
 page_length_limit = 1024
 title_start_with_terms = ('User: Wikipedia: File: MediaWiki: Template: '
-                       'Help: Category: Portal: Book: 28644448 Help:'
-                       .upper().split(' '))
+                          'Help: Category: Portal: Book: 28644448 Help:'
+                          .upper().split(' '))
 title_end_with_terms = '(disambiguation)'.upper().split(' ')
 text_start_with_terms = '#REDIRECT {{softredirect'.upper().split(' ')
 text_last_terms = '{{Disamb {{Dab stub}}'.upper().split(' ')
@@ -82,13 +83,41 @@ class IndexLoadError(Exception):
 
 # CLASSES
 
+class Paragraph(object):
+    """Container that holds sentences and their tokens."""
+
+    def __init__(self, text):
+        """Initialize the Paragraph object."""
+        self.text = text
+        self.sentences = None
+        self.sentence_tokens = None
+
+    def segment_sentences(self):
+        """Segment the Paragraph text into a list of sentences."""
+        # Sentence segmentation
+        if LINE_SEPARATOR in self.text:
+            self.sentences = [sent for sent in self.text.split(LINE_SEPARATOR)]
+        else:
+            self.sentences = sent_detector.tokenize(self.text,
+                                                    realign_boundaries=True)
+
+    def tokenize_sentences(self):
+        """Tokenize each sentence in the list into a list of tokens."""
+        if not self.sentences:
+            self.segment_sentences()
+        self.sentence_tokens = tokenizer.batch_tokenize(self.sentences)
+
+
 class Page:
+    """Holds all text and metadata (ID, title) of a page from the corpus."""
+
     def __init__(self, ID, title, text, start=None):
+        """Initialize the Page object."""
         self.ID = ID
         self.title = title
         self.text = text
         self.start = start
-        self.sentences = None
+        self.paragraphs = None
         self.token_count = None
         self.cosine_sim = None
 
@@ -107,28 +136,47 @@ class Page:
         self.remove_markup()
         self.unidecode()
 
+    def segment_paragraphs(self):
+        """Segment the Page text into a list of paragraphs."""
+        if PARAGRAPH_SEPARATOR in self.text:
+            split = PARAGRAPH_SEPARATOR
+        else:
+            split = '\n'
+        self.paragraphs = [Paragraph(text) for text in self.text.split(split)]
+
+    def segment_sentences(self):
+        """Segment each Paragraph into a list of sentences."""
+        if not self.paragraphs:
+            self.segment_paragraphs()
+        for paragraph in self.paragraphs:
+            paragraph.segment_sentences()
+
     def tokenize_sentences(self):
-        self.sentences = []
-        for paragraph in self.text.split(PARAGRAPH_SEPARATOR):
-            # Sentence segmentation
-            sentences = sent_detector.tokenize(paragraph,
-                                               realign_boundaries=True)
-            # Tokenization
-            sentences = tokenizer.batch_tokenize(sentences)
-            self.sentences.extend(sentences)
+        """Tokenize the sentence list in the paragraphs into list of tokens."""
+        if not self.paragraphs:
+            self.segment_sentences()
+        for paragraph in self.paragraphs:
+            paragraph.tokenize_sentences()
 
     def regularize_text(self):
-        for i, sentence in enumerate(self.sentences):
-            self.sentences[i] = regularize(sentence)
-        # Remove empty sentences
-        self.sentences = [x for x in self.sentences if x]
+        """Regularizes all tokens for each sentence in each paragraph."""
+        if not self.paragraphs:
+            self.tokenize_sentences()
+        for i, para in enumerate(self.paragraphs):
+            for j, sent in enumerate(para.sentence_tokens):
+                self.paragraphs[i].sentence_tokens[j] = regularize(sent)
+            # Remove empty sentences
+            self.paragraphs[i].sentence_tokens = [x for x in self.
+                                                  paragraphs[i].sentence_tokens
+                                                  if x]
 
     def count_tokens(self):
         """Count the frequency of text's tokens in a bag-of-words style."""
         self.token_count = collections.defaultdict(int)
-        for sentence in self.sentences:
-            for token in sentence:
-                self.token_count[token] += 1
+        for paragraph in self.paragraphs:
+            for sentence in paragraph.sentence_tokens:
+                for token in sentence:
+                    self.token_count[str(token)] += 1
         self.token_count = [(token, count) for (token, count) in\
                             sorted(self.token_count.iteritems(),
                                    key=operator.itemgetter(1),
@@ -170,6 +218,7 @@ class Index:
     def __init__(self, base_fname, doci_in_memory=False):
         """Loads all indices for the base_fname Wikipedia dump."""
         self.base_fname = base_fname
+        check_plain_corpus(base_fname)
         self.load_dict()
         self.load_pagi()
         if doci_in_memory:
@@ -244,10 +293,10 @@ class Index:
 
         def find_page(start):
             wiki_dump.seek(start)
-            pages = page_generator(wiki_dump)
+            pages = plain_page_generator(wiki_dump)
             return next(pages)
 
-        with open(self.base_fname, mode='rb') as wiki_dump:
+        with open(self.base_fname + '.txt', mode='rb') as wiki_dump:
             try:
                 iterator = iter(ID)
             except TypeError:
@@ -261,7 +310,7 @@ class Index:
                 return pages
 
     def union(self, terms):
-        """Returns set of all Page.IDs that contain any term in the term list."""
+        """Returns set of Page.IDs that contain any term in the term list."""
         pages = set()
         try:
             terms = [self.dict.token2id[term] for term in terms]
@@ -274,7 +323,7 @@ class Index:
         return pages
 
     def intersect(self, terms):
-        """Returns set of all Page.IDs that contain all terms in the term list."""
+        """Returns set of Page.IDs that contain all terms in the term list."""
         try:
             terms = [self.dict.token2id[term] for term in terms]
         except KeyError:
@@ -386,6 +435,16 @@ class DocI:
 
 # FUNCTIONS
 
+def check_plain_corpus(base_fname):
+    """Attempts to make sure the plain-text corpus is available."""
+    try:
+        with open(base_fname + '.txt') as wiki_dump:
+            pages = plain_page_generator(wiki_dump)
+            if not next(pages):
+                raise IndexLoadError
+    except IOError:
+        raise IndexLoadError
+
 def regularize(tokens):
     """Returns a copy of a regularized version of the token list."""
     tokens = list(tokens)
@@ -469,7 +528,21 @@ def page_generator(file_obj, offset=None):
                 yield Page(int(ID), title, text, start)
 
 
-def worker(taskq, doneq):
+def plain_page_generator(file_obj):
+    """Yields individual pages from a generated plain-text corpus file."""
+    title = ID = text = None
+    pos = next_pos = 0
+    for line in file_obj:
+        # Keep track of file pos for later start of page seeking
+        pos = next_pos
+        next_pos += len(line)
+        line = line.decode('utf-8')
+        ID, title, text = line.split('\t')
+        yield Page(int(ID), title, text, pos)
+
+
+def first_pass_worker(taskq, doneq):
+    """Processes pages to make a plain-text corpus from the original dump."""
     logger = logging.getLogger('worker')
     done_buff = []
     try:
@@ -478,11 +551,28 @@ def worker(taskq, doneq):
             if chunk is None:
                 return
             for page in chunk:
-                page.remove_markup()
+                page.preprocess()
                 if len(page.text) < page_length_limit:
                     continue
-                page.unidecode()
-                page.tokenize_sentences()
+                # Need to get tokens so we can build our Dictionary
+                page.regularize_text()
+                done_buff.append(page)
+            doneq.put(done_buff)
+            done_buff = []
+    finally:
+        doneq.put(None)
+
+
+def second_pass_worker(taskq, doneq):
+    """Counts tokens from the plain-text corpus to create an index."""
+    logger = logging.getLogger('worker')
+    done_buff = []
+    try:
+        while True:
+            chunk = taskq.get()
+            if chunk is None:
+                return
+            for page in chunk:
                 page.regularize_text()
                 page.count_tokens()
                 done_buff.append(page)
@@ -492,32 +582,45 @@ def worker(taskq, doneq):
         doneq.put(None)
 
 
-def dictionary_writer(doneq, wiki_location):
+def first_pass_writer(doneq, wiki_location):
+    """Extracts the Dictionary (vocabulary) and writes plain-text corpus."""
     pill_count = 0  # termination condition (poison pill)
     dictionary = gensim.corpora.dictionary.Dictionary()
     try:
-        # Begin processing chunks as they come in.
-        while True:
-            chunk = doneq.get()
-            if chunk is None:
-                pill_count += 1
-                if pill_count == NUMBER_OF_PROCESSES:
-                    return
-                else:
-                    continue
-            for page in chunk:
-                # Send all tokens from document to Dictionary
-                all_tokens = []
-                for sentence in page.sentences:
-                    all_tokens.extend(sentence)
-                dictionary.doc2bow(all_tokens, allow_update=True)
+        with codecs.open(wiki_location + '.txt',
+                         mode='w',
+                         encoding='utf-8') as txt:
+            # Begin processing chunks as they come in.
+            while True:
+                chunk = doneq.get()
+                if chunk is None:
+                    pill_count += 1
+                    if pill_count == NUMBER_OF_PROCESSES:
+                        return
+                    else:
+                        continue
+                for page in chunk:
+                    # Send all tokens from document to Dictionary
+                    all_tokens = []
+                    para_sent = []
+                    for para in page.paragraphs:
+                        for sentence in para.sentence_tokens:
+                            all_tokens.extend(sentence)
+                        sent = LINE_SEPARATOR.join(para.sentences)
+                        para_sent.append(sent)
+                    para_sent = PARAGRAPH_SEPARATOR.join(para_sent)
+                    dictionary.doc2bow(all_tokens, allow_update=True)
+                    # page.text = unicode(page.text)
+                    txt.write('\t'.join([str(page.ID), page.title, para_sent])
+                              + '\n')
     finally:
         # Save token indices
-        dictionary.filter_extremes()
+        dictionary.filter_extremes(no_below=20, no_above=0.1)
         dictionary.save_as_text(wiki_location + '.dict')
 
 
-def writer(doneq, wiki_location):
+def second_pass_writer(doneq, wiki_location):
+    """Writes various index files for fast searching and retrieval of pages."""
     pill_count = 0  # termination condition (poison pill)
     token_docs = collections.defaultdict(set)
     token_counts = collections.defaultdict(int)
@@ -540,7 +643,8 @@ def writer(doneq, wiki_location):
                     else:
                         continue
                 for page in chunk:
-                    # Remove tokens that don't appear in our Dictionary
+                    # Convert token from a string to an integer ID, and
+                    # remove tokens that don't appear in our Dictionary.
                     page.token_count = [(dictionary.token2id[t], c) for t, c in
                                         page.token_count if t in
                                         dictionary.token2id]
@@ -551,10 +655,6 @@ def writer(doneq, wiki_location):
                                          [chr(26).join([str(k), str(v)]) for
                                           k, v in page.token_count]) +
                                          '\n')
-    #                txt.write('\t'.join([str(ID), title]) + '\n\n')
-    #                for sentence in text:
-    #                    txt.write(' '.join([token for token in sentence]) + '\n')
-    #                txt.write('\n\n')
                     for token, count in page.token_count:
                         token_docs[token].add(int(page.ID))
                         token_counts[token] += int(count)
@@ -606,9 +706,9 @@ def create_punkt_sent_detector(fname, progress_count, max_pages=25000):
         pickle.dump(sbd, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def create_dictionary(fname, progress_count=None, max_pages=None):
-    """Create a Dictionary by extracting the vocabulary from the corpus."""
-    logger = logging.getLogger('create_dictionary')
+def first_pass(fname, progress_count=None, max_pages=None):
+    """Extract a Dictionary and create plain-text version of corpus."""
+    logger = logging.getLogger('first_pass')
 
     wiki_size = os.path.getsize(fname)
 
@@ -620,12 +720,13 @@ def create_dictionary(fname, progress_count=None, max_pages=None):
     logger.info('Starting workers')
     workers = []
     for i in range(NUMBER_OF_PROCESSES):
-        p = multiprocessing.Process(target=worker, args=(taskq, doneq))
+        p = multiprocessing.Process(target=first_pass_worker,
+                                    args=(taskq, doneq))
         p.start()
         workers.append(p)
 
     # Start log writer process
-    p = multiprocessing.Process(target=dictionary_writer, args=(doneq, fname))
+    p = multiprocessing.Process(target=first_pass_writer, args=(doneq, fname))
     p.start()
     workers.append(p)
 
@@ -682,16 +783,16 @@ def create_index(fname, progress_count=None, max_pages=None):
     if progress_count is None:
         progress_count = CHUNK_SIZE * NUMBER_OF_PROCESSES
 
-    # First pass, create Dictionary
+    # First pass, create Dictionary and plain-text version of corpus.
     try:
         dictionary = (gensim.corpora.dictionary.Dictionary().
                       load_from_text(fname + '.dict'))
-    except IOError:
-        create_dictionary(fname, progress_count, max_pages)
+        if not dictionary or check_plain_corpus(fname):
+            raise IndexLoadError
+    except (IOError, IndexLoadError):
+        first_pass(fname, progress_count, max_pages)
     else:
         del dictionary
-
-    wiki_size = os.path.getsize(fname)
 
     # Page task queues for parallel processing
     taskq = multiprocessing.Queue(MAX_QUEUE_ITEMS)
@@ -701,17 +802,23 @@ def create_index(fname, progress_count=None, max_pages=None):
     logger.info('Starting workers')
     workers = []
     for i in range(NUMBER_OF_PROCESSES):
-        p = multiprocessing.Process(target=worker, args=(taskq, doneq))
+        p = multiprocessing.Process(target=second_pass_worker,
+                                    args=(taskq, doneq))
         p.start()
         workers.append(p)
 
     # Start log writer process
-    p = multiprocessing.Process(target=writer, args=(doneq, fname))
+    p = multiprocessing.Process(target=second_pass_writer, args=(doneq, fname))
     p.start()
     workers.append(p)
 
+    # We are now working with the plain-text corpus generated in the 1st pass.
+    fname += '.txt'
+
+    wiki_size = os.path.getsize(fname)
+
     # Process XML dump
-    logger.info('Begining XML parse')
+    logger.info('Begining plain-text parse')
 
     wiki_size = os.path.getsize(fname)
     page_count = 0
@@ -719,7 +826,7 @@ def create_index(fname, progress_count=None, max_pages=None):
     task_buff = []
     try:
         with open(fname, mode='rb') as wiki_dump:
-            pages = page_generator(wiki_dump)
+            pages = plain_page_generator(wiki_dump)
             for page in pages:
                 task_buff.append(page)
                 if len(task_buff) == CHUNK_SIZE:
