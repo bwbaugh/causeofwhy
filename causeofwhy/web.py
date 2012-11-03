@@ -11,26 +11,34 @@ import answer_engine
 from answer_engine import AnswerEngine
 
 
-# How many page worker threads to use
+# How many response worker threads to use
 NUMBER_OF_PROCESSES = max(1, multiprocessing.cpu_count() - 1)
 
 
 class MainHandler(tornado.web.RequestHandler):
+    """Handles requests for the query input page."""
+
     def get(self):
+        """Renders the query input page."""
         self.render("index.html")
 
 
 class QueryHandler(tornado.web.RequestHandler):
+    """Handles question queries and displays response."""
+
     def initialize(self):
+        """Stores references to the processing pool and Index object."""
         self.pool = self.application.settings.get('pool')
         self.index = self.application.settings.get('index')
 
     def prepare(self):
+        """Sets default values for each incoming request."""
         self.query = None
         self.ans_eng = None
 
     @tornado.web.asynchronous
     def get(self):
+        """Gets user query and any args and sends to an AnswerEngine."""
         self.query = self.get_argument('q')
         num_top = int(self.get_argument('top', default=5))
         start = int(self.get_argument('start', default=0))
@@ -40,6 +48,7 @@ class QueryHandler(tornado.web.RequestHandler):
                               callback=self.callback)
 
     def callback(self, args):
+        """Renders a list of computed answers as a response to the query."""
         answers, ir_query_tagged = args
         self.render("answer.html",
                     query=self.query,
@@ -49,7 +58,8 @@ class QueryHandler(tornado.web.RequestHandler):
                     answers=answers)
 
 
-def main(index):
+def main(index, port=8080):
+    """Starts the web server as a user interface to the system."""
     pool = multiprocessing.Pool(NUMBER_OF_PROCESSES)
     # Give each pool initial piece of work so that they initialize.
     ans_eng = AnswerEngine(index, 'bird sing', 0, 1, 2.16)
@@ -64,8 +74,5 @@ def main(index):
         index=index,
         pool=pool)
     http_server = tornado.httpserver.HTTPServer(application, xheaders=True)
-    http_server.listen(8080)
+    http_server.listen(port)
     tornado.ioloop.IOLoop.instance().start()
-
-if __name__ == "__main__":
-    main()

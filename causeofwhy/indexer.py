@@ -84,7 +84,7 @@ class IndexLoadError(Exception):
 
 # CLASSES
 
-class Index:
+class Index(object):
     """The main information retrieval (IR) class.
 
     This class uses the previously created index files to create an
@@ -93,7 +93,25 @@ class Index:
 
     Individual page objects can be retrieved from disk, or a set of
     pages that match a term list (either by union or intersection).
+
+    Attributes:
+        base_fname: The string filename (including path) of the corpus.
+        mongo_conn: If present, is the Connection object for the MongoDB
+            driver (interface).
+        mongo_db: If present, is the MongoDB database, named after the
+            corpus filename.
+        dict: A Gensim Dictionary object for converting a string(token)
+            to an int(token_id).
+        pagi: The page index {page.ID -> page.start, doci.offset}. Used
+            to store the location of an individual page in the corpus.
+        doci: The document index {page.ID -> page.token_count} object.
+        tokc: The token-count index {token -> count} where count is the
+            number of times the term appears in the entire corpus.
+        toki: The token-document index: {toki[token] -> set(documents)},
+            where set(deocuments) is the set of document IDs where the
+            token exists in the document.
     """
+
     def __init__(self, base_fname, doci_in_memory=False):
         """Loads all indices for the base_fname Wikipedia dump."""
         self.base_fname = base_fname
@@ -108,6 +126,11 @@ class Index:
             self.doci = DocI(self)
         self.load_tokc()
         self.load_toki()
+
+    def load_mongo(self):
+        """Connect to the MongoDB server and select the database."""
+        self.mongo_conn = pymongo.Connection('localhost', 27017)
+        self.mongo_db = self.mongo_conn[mongo_db_name(self.base_fname)]
 
     def load_dict(self):
         """Load the (gensim) Dictionary representing the vocabulary.
@@ -150,7 +173,7 @@ class Index:
             raise IndexLoadError
 
     def load_tokc(self):
-        """Load the token counts {tokc[token] -> count}"""
+        """Load the token-count index {tokc[token] -> count}"""
         try:
             with open(self.base_fname + '.tokc', mode='rb') as f:
                 self.tokc = pickle.load(f)
@@ -160,13 +183,8 @@ class Index:
             raise IndexLoadError
 
     def load_toki(self):
-        """Load the token document index: {toki[token] -> set(documents)}"""
+        """Load the token-document index: {toki[token] -> set(documents)}"""
         self.toki = TokI(self)
-
-    def load_mongo(self):
-        """Connect to the MongoDB server and select the database."""
-        self.mongo_conn = pymongo.Connection('localhost', 27017)
-        self.mongo_db = self.mongo_conn[mongo_db_name(self.base_fname)]
 
     def get_page(self, ID):
         """Returns the corresponding Page object residing on disk."""
@@ -272,7 +290,7 @@ class Index:
         return {term: token_count[term] / max_count for term in token_count}
 
 
-class DocI:
+class DocI(object):
     """Wrapper class around the .doci index file; allows for doci[ID].
 
     This class allows the .doci {page.ID -> page.token_count} index to
@@ -285,6 +303,7 @@ class DocI:
     call, the operation becomes exponentially expensive!
     """
     def __init__(self, index):
+        """Initialize the DocI object from disk."""
         self.index = index
         # Make sure the file can open and at least the first line is parsable.
         try:
@@ -548,6 +567,7 @@ def second_pass_writer(doneq, wiki_location):
 
 
 def create_punkt_sent_detector(fname, progress_count, max_pages=25000):
+    """Makes a pass through the corpus to train a Punkt sentence segmenter."""
     logger = logging.getLogger('create_punkt_sent_detector')
 
     punkt = nltk.tokenize.punkt.PunktTrainer()
@@ -561,8 +581,7 @@ def create_punkt_sent_detector(fname, progress_count, max_pages=25000):
         with open(fname, mode='rb') as wiki_dump:
             pages = page_generator(wiki_dump)
             for page in pages:
-                page.remove_markup()
-                page.unidecode()
+                page.preprocess()
                 punkt.train(page.text, finalize=False, verbose=False)
                 page_count += 1
                 if page_count == max_pages:
@@ -651,6 +670,7 @@ def first_pass(fname, progress_count=None, max_pages=None):
 
 # Main function of module
 def create_index(fname, progress_count=None, max_pages=None):
+    """Processes a corpus to create a corresponding Index object."""
     logger = logging.getLogger('create_index')
 
     if sent_detector is None:

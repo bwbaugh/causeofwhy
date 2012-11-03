@@ -32,7 +32,15 @@ text_last_terms = '{{Disamb {{Dab stub}}'.upper().split(' ')
 # CLASSES
 
 class Paragraph(object):
-    """Container that holds sentences and their tokens."""
+    """Container that holds sentences and their tokens.
+
+    Attributes:
+        text: The original unaltered text string of the paragraph.
+        sentences: A list of unaltered strings for each sentence in the
+            paragraph.
+        sentence_tokens: A list of sentences that contains a list of
+            string tokens for each sentence.
+    """
 
     def __init__(self, text):
         """Initialize the Paragraph object."""
@@ -56,8 +64,22 @@ class Paragraph(object):
         self.sentence_tokens = tokenizer.batch_tokenize(self.sentences)
 
 
-class Page:
-    """Holds all text and metadata (ID, title) of a page from the corpus."""
+class Page(object):
+    """Holds all text and metadata (ID, title) of a page from the corpus.
+
+    Attributes:
+        ID: An integer corresponding to the ID of the page in the corpus.
+        title: A string of the document title.
+        start: The integer offset this document begins at in the corpus.
+            Used to seek in the corpus file when retrieving a Page ID.
+        paragraphs: A list of Paragraph objects for this document.
+        token_count: A defaultdict(int) providing {token -> count},
+            where count is the number of times the token appears in the
+            document (in all of the document's paragraphs).
+        cosine_sim: If present, represents the similarity score for the
+            query that was used to retrieve this document. This value
+            is set by an Index object.
+    """
 
     def __init__(self, ID, title, text, start=None):
         """Initialize the Page object."""
@@ -131,8 +153,8 @@ class Page:
                                    reverse=True)]
 
     def __str__(self):
-        self.remove_markup()
-        self.unidecode()
+        """Creates a string including ID, title, and original text."""
+        self.preprocess()
         f = StringIO()
         f.write('=' * 79 + '\n')
         f.write(str(self.ID) + ' ' + self.title + '\n')
@@ -156,6 +178,7 @@ class Page:
 # FUNCTIONS
 
 def bad_page(title, text):
+    """Uses heuristics to see if a page shouldn't be processed."""
     for term in title_start_with_terms:
         if title[:len(term)].upper() == term:
             return True
