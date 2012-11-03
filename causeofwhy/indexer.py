@@ -155,7 +155,7 @@ class Index(object):
                     self.pagi[int(ID)] = (int(start), int(offset))
             if not self.pagi:
                 raise IndexLoadError
-        except IOError:
+        except (IOError, ValueError):
             raise IndexLoadError
 
     def load_doci(self):
@@ -368,19 +368,21 @@ class TokI(object):
     def __getitem__(self, token):
         """Retrieve a token's set of page IDs: {token -> set(page.IDs)}"""
         if pymongo:
-            result = self.mongo_toki.find_one({'_id': token})
-            try:
-                return result['ID']
-            except TypeError:
+            results = set()
+            for result in self.mongo_toki.find({'tok': token}):
+                results.add(result['_id'])
+            if results:
+                return results
+            else:
                 print 'ERROR: bad token = {}'.format(token)
-                raise
+                raise KeyError
         else:
             return self.toki[token]
 
     def __contains__(self, key):
         """Checks if key exists in the index."""
         if pymongo:
-            return self.mongo_toki.find_one({'_id': key}) is not None
+            return self.mongo_toki.find_one({'tok': key}) is not None
         else:
             return key in self.toki
 
@@ -504,35 +506,12 @@ def first_pass_writer(doneq, wiki_location):
 def second_pass_writer(doneq, wiki_location):
     """Writes various index files for fast searching and retrieval of pages."""
 
-    def toki_worker(mongo_toki, queue):
-        """Used to access the MongoDB in a different thread."""
-        while True:
-            token_list, ID = queue.get()
-            # Create entry if it doesn't exist
-            mongo_toki.insert([{'_id': token} for token in token_list],
-                              continue_on_error=True)
-            # Update all the entries at once
-            mongo_toki.update({'_id': {'$in': token_list}},
-                              {'$addToSet': {'ID': ID}},
-                              upsert=True, multi=True)
-            queue.task_done()
-
     if pymongo:
         mongo_conn = pymongo.Connection('localhost', 27017)
         mongo_db = mongo_conn[mongo_db_name(wiki_location)]
         mongo_toki = mongo_db['toki']
         # Delete any existing data
         mongo_toki.drop()
-        # Setup some threads and a Queue to access the MongoDB faster.
-        toki_queue = Queue.Queue()
-        t = threading.Thread(target=toki_worker, args=(mongo_toki,
-                                                       toki_queue))
-        t.setDaemon(True)
-        t.start()
-        # Number of pages to process at once.
-        # If this is set to high you will lose data! If this happens,
-        # the associated error is: "query not recording (too large)".
-        token_chunk = 8
     else:
         token_docs = collections.defaultdict(set)
     token_counts = collections.defaultdict(int)
@@ -555,6 +534,9 @@ def second_pass_writer(doneq, wiki_location):
                         return
                     else:
                         continue
+                if pymongo:
+                    # Used to store pages from the chunk for a batch insert.
+                    mongo_list = []
                 for page in chunk:
                     # Convert token from a string to an integer ID, and
                     # remove tokens that don't appear in our Dictionary.
@@ -571,25 +553,26 @@ def second_pass_writer(doneq, wiki_location):
                     if pymongo:
                         token_list = []
                         for token, count in page.token_count:
+                            # Get the set tokens that appear in the page.
                             token_list.append(token)
-                            if len(token_list) == token_chunk:
-                                toki_queue.put((token_list, page.ID))
-                                token_list = []
                             token_counts[token] += int(count)
-                        if token_list:
-                            toki_queue.put((token_list, page.ID))
-                        toki_queue.join()
+                        mongo_list.append((page.ID, token_list))
                     else:
                         for token, count in page.token_count:
                             token_docs[token].add(page.ID)
                             token_counts[token] += int(count)
                 for f in (pagi, doci):
                     f.flush()
+                if pymongo:
+                    # Batch insert all pages from this chunk.
+                    mongo_toki.insert([{'_id': ID, 'tok': token_list} for
+                                       ID, token_list in mongo_list])
     finally:
         # Save token indices
         with open(wiki_location + '.tokc', mode='wb') as tokc:
             pickle.dump(token_counts, tokc, protocol=pickle.HIGHEST_PROTOCOL)
         if pymongo:
+            mongo_toki.ensure_index('tok')  # blocking
             mongo_conn.disconnect()
         else:
             with open(wiki_location + '.toki', mode='wb') as toki:
