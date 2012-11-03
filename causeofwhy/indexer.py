@@ -20,8 +20,21 @@ except ImportError:
 
 # External packages and modules
 import gensim
+try:
+    import pymongo
+except ImportError:
+    pymongo = None
+    print """\
+          WARNING: pymongo package could not be found.
+              If you are using a SMALL corpus---such as the *Simple English*
+              version of Wikipedia---and the inverted token index can fit
+              entirely in memory, then comment out this `raise` line.
+              Otherwise, please install the PyMongo library!
+          """
+    raise
 import nltk
 from nltk.corpus import stopwords
+
 
 # Project modules
 # *** IMPORTED AT THE END OF THIS FILE ***
@@ -85,6 +98,8 @@ class Index:
         """Loads all indices for the base_fname Wikipedia dump."""
         self.base_fname = base_fname
         check_plain_corpus(base_fname)
+        if pymongo:
+            self.load_mongo()
         self.load_dict()
         self.load_pagi()
         if doci_in_memory:
@@ -146,13 +161,12 @@ class Index:
 
     def load_toki(self):
         """Load the token document index: {toki[token] -> set(documents)}"""
-        try:
-            with open(self.base_fname + '.toki', mode='rb') as f:
-                self.toki = pickle.load(f)
-            if not self.toki:
-                raise IndexLoadError
-        except (IOError, pickle.UnpicklingError):
-            raise IndexLoadError
+        self.toki = TokI(self)
+
+    def load_mongo(self):
+        """Connect to the MongoDB server and select the database."""
+        self.mongo_conn = pymongo.Connection('localhost', 27017)
+        self.mongo_db = self.mongo_conn[mongo_db_name(self.base_fname)]
 
     def get_page(self, ID):
         """Returns the corresponding Page object residing on disk."""
@@ -216,8 +230,12 @@ class Index:
             token_counts = self.doci[ID]
             max_count = max(token_counts.itervalues())
             for term in token_counts:
+                # TF: Raw frequency divided by the maximum raw frequency
+                # of any term in the document.
                 tf = token_counts[term] / max_count
-                idf = math.log(len(self.doci) / len(self.toki[term]))
+                # IDF: Total number of documents in the corpus divided by
+                # the number of documents where the term appears.
+                idf = math.log(len(self.doci) / self.dict.dfs[term])
                 d_tfidf[term] = tf * idf
             # Calculate inner product
             inner_product = 0
@@ -299,6 +317,54 @@ class DocI:
         return len(self.index.pagi)
 
 
+class TokI(object):
+    """Wrapper class around the .toki index file; allows for toki[token].
+
+    This class allows access to the toki {token -> set(page.IDs)} whether
+    the underlying index is from a MongoDB or a defaultdict loaded entirely
+    into memory.
+    """
+
+    def __init__(self, index):
+        """Initialize the TokI object from a MongoDB or load from disk."""
+        self.index = index
+        if pymongo:
+            if 'toki' in self.index.mongo_db.collection_names():
+                self.mongo_toki = self.index.mongo_db['toki']
+                if self.mongo_toki.count() == 0:
+                    raise IndexLoadError
+            else:
+                raise IndexLoadError
+        else:
+            # Load into memory (not suitable for large corpora!)
+            try:
+                with open(self.index.base_fname + '.toki', mode='rb') as f:
+                    self.toki = pickle.load(f)
+                if not self.toki:
+                    raise IndexLoadError
+            except (IOError, pickle.UnpicklingError):
+                raise IndexLoadError
+
+    def __getitem__(self, token):
+        """Retrieve a token's set of page IDs: {token -> set(page.IDs)}"""
+        if pymongo:
+            result = self.mongo_toki.find_one({'_id': token})
+            try:
+                return result['ID']
+            except TypeError:
+                print 'ERROR: bad token = {}'.format(token)
+                raise
+        else:
+            return self.toki[token]
+
+    def __contains__(self, key):
+        """Checks if key exists in the index."""
+        if pymongo:
+            return self.mongo_toki.find_one({'_id': key}) is not None
+        else:
+            return key in self.toki
+
+
 # FUNCTIONS
 
 def check_plain_corpus(base_fname):
@@ -310,6 +376,13 @@ def check_plain_corpus(base_fname):
                 raise IndexLoadError
     except IOError:
         raise IndexLoadError
+
+
+def mongo_db_name(base_fname):
+    """Use the corpus filename to create the database name."""
+    fname = base_fname.replace('\\', '/').rsplit('/', 1)[1]
+    fname = fname.replace('.', '_')
+    return fname
 
 
 def regularize(tokens):
@@ -411,7 +484,14 @@ def first_pass_writer(doneq, wiki_location):
 def second_pass_writer(doneq, wiki_location):
     """Writes various index files for fast searching and retrieval of pages."""
     pill_count = 0  # termination condition (poison pill)
-    token_docs = collections.defaultdict(set)
+    if pymongo:
+        mongo_conn = pymongo.Connection('localhost', 27017)
+        mongo_db = mongo_conn[mongo_db_name(wiki_location)]
+        mongo_toki = mongo_db['toki']
+        # Delete any existing data
+        mongo_toki.drop()
+    else:
+        token_docs = collections.defaultdict(set)
     token_counts = collections.defaultdict(int)
     dictionary = (gensim.corpora.dictionary.Dictionary().
                   load_from_text(wiki_location + '.dict'))
@@ -444,17 +524,27 @@ def second_pass_writer(doneq, wiki_location):
                                          [chr(26).join([str(k), str(v)]) for
                                           k, v in page.token_count]) +
                                          '\n')
-                    for token, count in page.token_count:
-                        token_docs[token].add(int(page.ID))
-                        token_counts[token] += int(count)
+                    if pymongo:
+                        for token, count in page.token_count:
+                            mongo_toki.update({'_id': token},
+                                              {'$addToSet': {'ID': page.ID}},
+                                              upsert=True)
+                            token_counts[token] += int(count)
+                    else:
+                        for token, count in page.token_count:
+                            token_docs[token].add(page.ID)
+                            token_counts[token] += int(count)
                 for f in (pagi, doci):
                     f.flush()
     finally:
         # Save token indices
-        with open(wiki_location + '.toki', mode='wb') as toki:
-            pickle.dump(token_docs, toki, protocol=pickle.HIGHEST_PROTOCOL)
         with open(wiki_location + '.tokc', mode='wb') as tokc:
             pickle.dump(token_counts, tokc, protocol=pickle.HIGHEST_PROTOCOL)
+        if pymongo:
+            mongo_conn.disconnect()
+        else:
+            with open(wiki_location + '.toki', mode='wb') as toki:
+                pickle.dump(token_docs, toki, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def create_punkt_sent_detector(fname, progress_count, max_pages=25000):

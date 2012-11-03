@@ -67,3 +67,26 @@ Provides a web server interface.
 Converts text from MediaWiki markup format to plain text.
 
 * <http://medialab.di.unipi.it/wiki/Wikipedia_extractor>
+
+### PyMongo
+
+Tools for interacting with MongoDB databases. This is useful for working
+with indices that can't be held entirely in memory, which is not a
+problem for a smaller corpus like the *Simple English Wikipedia* but is
+an issue for larger corpora like the full *English Wikipedia*.
+
+* <http://api.mongodb.org/python/current/installation.html>
+* <https://github.com/mongodb/mongo-python-driver/>
+
+#### MongoDB
+
+Since the PyMongo library is just an interface, we need an instance of
+the actual database itself running.
+
+* Pick the version for your platform.
+* If using Windows 7 or higher get the Windows 2008+ build.
+* Tested with version: 2.2.1
+
+Start the database process before running the application.
+
+* <http://www.mongodb.org/downloads>
