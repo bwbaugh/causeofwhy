@@ -3,34 +3,28 @@
 # Python packages
 from __future__ import division
 from __future__ import with_statement
-from pprint import pprint
 import os
-import sys
 import multiprocessing
 import Queue
 import logging
 import collections
 import operator
 import codecs
-import re
 import string
 import math
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO
 
 
 # External packages and modules
-import WikiExtractor
 import gensim
 import nltk
 from nltk.corpus import stopwords
-from unidecode import unidecode
+
+# Project modules
+# *** IMPORTED AT THE END OF THIS FILE ***
 
 
 # MODULE CONFIGURATION
@@ -67,12 +61,6 @@ PARAGRAPH_SEPARATOR = u'\u2029'
 
 # Bad page checks
 page_length_limit = 1024
-title_start_with_terms = ('User: Wikipedia: File: MediaWiki: Template: '
-                          'Help: Category: Portal: Book: 28644448 Help:'
-                          .upper().split(' '))
-title_end_with_terms = '(disambiguation)'.upper().split(' ')
-text_start_with_terms = '#REDIRECT {{softredirect'.upper().split(' ')
-text_last_terms = '{{Disamb {{Dab stub}}'.upper().split(' ')
 
 
 # EXCEPTIONS
@@ -82,128 +70,6 @@ class IndexLoadError(Exception):
 
 
 # CLASSES
-
-class Paragraph(object):
-    """Container that holds sentences and their tokens."""
-
-    def __init__(self, text):
-        """Initialize the Paragraph object."""
-        self.text = text
-        self.sentences = None
-        self.sentence_tokens = None
-
-    def segment_sentences(self):
-        """Segment the Paragraph text into a list of sentences."""
-        # Sentence segmentation
-        if LINE_SEPARATOR in self.text:
-            self.sentences = [sent for sent in self.text.split(LINE_SEPARATOR)]
-        else:
-            self.sentences = sent_detector.tokenize(self.text,
-                                                    realign_boundaries=True)
-
-    def tokenize_sentences(self):
-        """Tokenize each sentence in the list into a list of tokens."""
-        if not self.sentences:
-            self.segment_sentences()
-        self.sentence_tokens = tokenizer.batch_tokenize(self.sentences)
-
-
-class Page:
-    """Holds all text and metadata (ID, title) of a page from the corpus."""
-
-    def __init__(self, ID, title, text, start=None):
-        """Initialize the Page object."""
-        self.ID = ID
-        self.title = title
-        self.text = text
-        self.start = start
-        self.paragraphs = None
-        self.token_count = None
-        self.cosine_sim = None
-
-    def remove_markup(self):
-        """Remove wiki markup leaving just the plain-text."""
-        self.text = WikiExtractor.clean(self.text)
-        self.text = '\n'.join(WikiExtractor.compact(self.text))
-
-    def unidecode(self):
-        """Convert non-ascii to closest ASCII equivalent."""
-        self.title = unidecode(self.title).strip()
-        self.text = unidecode(self.text).strip()
-
-    def preprocess(self):
-        """Convenience method that removed markup does unidecode."""
-        self.remove_markup()
-        self.unidecode()
-
-    def segment_paragraphs(self):
-        """Segment the Page text into a list of paragraphs."""
-        if PARAGRAPH_SEPARATOR in self.text:
-            split = PARAGRAPH_SEPARATOR
-        else:
-            split = '\n'
-        self.paragraphs = [Paragraph(text) for text in self.text.split(split)]
-
-    def segment_sentences(self):
-        """Segment each Paragraph into a list of sentences."""
-        if not self.paragraphs:
-            self.segment_paragraphs()
-        for paragraph in self.paragraphs:
-            paragraph.segment_sentences()
-
-    def tokenize_sentences(self):
-        """Tokenize the sentence list in the paragraphs into list of tokens."""
-        if not self.paragraphs:
-            self.segment_sentences()
-        for paragraph in self.paragraphs:
-            paragraph.tokenize_sentences()
-
-    def regularize_text(self):
-        """Regularizes all tokens for each sentence in each paragraph."""
-        if not self.paragraphs:
-            self.tokenize_sentences()
-        for i, para in enumerate(self.paragraphs):
-            for j, sent in enumerate(para.sentence_tokens):
-                self.paragraphs[i].sentence_tokens[j] = regularize(sent)
-            # Remove empty sentences
-            self.paragraphs[i].sentence_tokens = [x for x in self.
-                                                  paragraphs[i].sentence_tokens
-                                                  if x]
-
-    def count_tokens(self):
-        """Count the frequency of text's tokens in a bag-of-words style."""
-        self.token_count = collections.defaultdict(int)
-        for paragraph in self.paragraphs:
-            for sentence in paragraph.sentence_tokens:
-                for token in sentence:
-                    self.token_count[str(token)] += 1
-        self.token_count = [(token, count) for (token, count) in\
-                            sorted(self.token_count.iteritems(),
-                                   key=operator.itemgetter(1),
-                                   reverse=True)]
-
-    def __str__(self):
-        self.remove_markup()
-        self.unidecode()
-        f = StringIO()
-        f.write('=' * 79 + '\n')
-        f.write(str(self.ID) + ' ' + self.title + '\n')
-        f.write('-' * 79 + '\n')
-        f.write(self.text.encode('utf-8') + '\n')
-        f.write('=' * 79 + '\n')
-        output = f.getvalue()
-        f.close()
-        return output
-
-    # def __eq__(self, other):
-    #     return self.ID == other.ID
-
-    # def __ne__(self, other):
-    #     return not self.__eq__(other)
-
-    # def __hash__(self):
-    #     return hash((self.ID,))
-
 
 class Index:
     """The main information retrieval (IR) class.
@@ -445,6 +311,7 @@ def check_plain_corpus(base_fname):
     except IOError:
         raise IndexLoadError
 
+
 def regularize(tokens):
     """Returns a copy of a regularized version of the token list."""
     tokens = list(tokens)
@@ -461,84 +328,6 @@ def regularize(tokens):
     # Remove empty tokens
     tokens = [x for x in tokens if x is not None]
     return tokens
-
-
-def bad_page(title, text):
-    for term in title_start_with_terms:
-        if title[:len(term)].upper() == term:
-            return True
-    for term in title_end_with_terms:
-        if title[-len(term):].upper() == term:
-            return True
-    if len(text) <= page_length_limit:
-        return True
-    for term in text_start_with_terms:
-        if term == text[:len(term)].upper():
-            return True
-    for term in text_last_terms:
-        if term in text[-8000:].upper():
-            return True
-    return False
-
-
-def page_generator(file_obj, offset=None):
-    """Parses a Wikipedia dump file and yields individual pages."""
-    state = title = ID = text = start = None
-    pos = next_pos = 0
-    for line in file_obj:
-        # Keep track of file pos for later start of page seeking
-        pos = next_pos
-        next_pos += len(line)
-        line = line.decode('utf-8')
-        if state is None:
-            if '<page>' in line:
-                state = 'page'
-                start = pos
-        elif state == 'page':
-            title = re.search(r'<title>(.*?)</title>', line)
-            if title:
-                state = 'title'
-                title = title.group(1)
-        elif state == 'title':
-            ID = re.search(r'<id>(\d+)</id>', line)
-            if ID:
-                state = 'id'
-                ID = ID.group(1)
-        elif state == 'id':
-            if line.endswith('</text>\n'):
-                text = re.search(r'<text[^>]*>(.*?)</text>', line).group(1)
-                state = 'done'
-            else:
-                text = re.search(r'<text.*?>', line)
-                if text:
-                    text = [line[text.end():]]
-                    state = 'text'
-        elif state == 'text':
-            if line.endswith('</text>\n'):
-                text.append(line[:-8])
-                text = ''.join(text)
-                state = 'done'
-            else:
-                text.append(line)
-        if state == 'done':
-            state = None
-            if bad_page(title, text):
-                continue
-            else:
-                yield Page(int(ID), title, text, start)
-
-
-def plain_page_generator(file_obj):
-    """Yields individual pages from a generated plain-text corpus file."""
-    title = ID = text = None
-    pos = next_pos = 0
-    for line in file_obj:
-        # Keep track of file pos for later start of page seeking
-        pos = next_pos
-        next_pos += len(line)
-        line = line.decode('utf-8')
-        ID, title, text = line.split('\t')
-        yield Page(int(ID), title, text, pos)
 
 
 def first_pass_worker(taskq, doneq):
@@ -855,3 +644,8 @@ def create_index(fname, progress_count=None, max_pages=None):
     # Wait for all child processes to stop (especially that writer!)
     for p in workers:
         p.join()
+
+
+# PROJECT MODULE IMPORTS
+
+from wiki_dump_reader import page_generator, plain_page_generator
