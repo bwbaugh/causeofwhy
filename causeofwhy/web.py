@@ -41,6 +41,7 @@ class QueryHandler(tornado.web.RequestHandler):
         """Gets user query and any args and sends to an AnswerEngine."""
         self.query = self.get_argument('q')
         num_top = int(self.get_argument('top', default=5))
+        self.num = int(self.get_argument('num', default=10))
         start = int(self.get_argument('start', default=0))
         lch = float(self.get_argument('lch', default=2.16))
         self.ans_eng = AnswerEngine(self.index, self.query, start, num_top, lch)
@@ -55,7 +56,8 @@ class QueryHandler(tornado.web.RequestHandler):
                     ir_query=' '.join(self.ans_eng.ir_query),
                     ir_query_tagged=ir_query_tagged,
                     num_pages=self.ans_eng.num_pages,
-                    answers=answers)
+                    num_answers=len(answers),
+                    answers=answers[:self.num])
 
 
 def main(index, port=8080):

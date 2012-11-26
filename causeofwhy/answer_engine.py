@@ -1,5 +1,8 @@
 # Copyright (C) 2012 Brian Wesley Baugh
 """Provides document analysis and answer extraction functions and classes."""
+from __future__ import division
+import math
+
 import nltk
 from nltk.corpus import wordnet
 
@@ -123,17 +126,17 @@ class AnswerEngine(object):
                     return True
         return False
 
-    def sentence_matches(self, sentence):
-        """Make sure every query term has a match in the sentence."""
-        for term, synsets in self.ir_query_tagged:
-            match = False
-            for page_term in indexer.regularize(sentence):
-                if term == page_term or self.related(synsets, page_term):
-                    match = True
-                    break
-            if not match:
-                return False
-        return True
+    def related_values(self, synsets, word2):
+        """Get list of related value between synsets of two words."""
+        related = []
+        for net1 in synsets:
+            for net2 in wordnet.synsets(word2):
+                try:
+                    lch = net1.lch_similarity(net2)
+                except:
+                    continue
+                related.append(lch)
+        return related
 
     def _extract_answers(self):
         """Extract answers from the pages using all the tagged information.
@@ -147,9 +150,12 @@ class AnswerEngine(object):
                 for sentence in para.sentence_tokens:
                     # if len(page_windows) == 3:
                     #     break
-                    if self.sentence_matches(sentence):
-                        page_windows.append(Answer(page, ' '.join(sentence)))
+                    page_windows.append(Answer(page, sentence,
+                                        ' '.join(sentence), self))
             answers.extend(page_windows)
+        answers = [x for x in answers if x.score > 0]
+        answers.sort(key=lambda answer: answer.score, reverse=True)
+        # answers.sort(key=lambda answer: answer.page.cosine_sim, reverse=True)
         self.answers = answers
 
     def get_answers(self):
@@ -170,13 +176,58 @@ class AnswerEngine(object):
         return self.answers
 
 
-class Answer:
+class Answer(object):
     """Represents a single answer."""
 
-    def __init__(self, page, text):
+    def __init__(self, page, raw, text, ans_eng):
         """Initializes the Answer object with the Page and answer text."""
         self.page = page
         self.text = text
+        self.score = self.get_score(raw, ans_eng)
+
+    def get_score(self, raw, ans_eng):
+        """Compute a score for this answer so that it may be ranked."""
+        (
+         term_count,
+         related,
+         causal_match,
+         position,
+        ) = self._compute_score(raw, ans_eng)
+        if term_count == 0:
+            return 0
+        score = 0
+        score += 16 * term_count
+        score += 16 * sum(related)
+        # score += 16 * causal_match
+        score -= 4 * math.sqrt(sum(position))
+        # score -= 4 * math.sqrt(max(position) - min(position))
+        return score
+
+    def _compute_score(self, sentence, ans_eng):
+        """Compute various score components from the sentence."""
+        term_count = 0
+        related = []
+        causal_match = False
+        position = []
+        for term, synsets in ans_eng.ir_query_tagged:
+            match = False
+            term_related = []
+            for i, page_term in enumerate(indexer.regularize(sentence)):
+                page_term_related = ans_eng.related_values(synsets, page_term)
+                if page_term_related:
+                    term_related.append((max(page_term_related), i))
+                    if term == page_term or max(page_term_related) >= ans_eng.lch:
+                        match = True
+            if match:  # above LCH value
+                term_count += 1
+                if term == 'cause':
+                    causal_match = True
+            if term_related:
+                term_related.sort(key=lambda tup: tup[0])
+                term_related, i = term_related[-1]  # maximum value
+                related.append(term_related)
+                position.append(i)
+        return term_count, related, causal_match, position
 
 
 def get_answers(ans_eng):

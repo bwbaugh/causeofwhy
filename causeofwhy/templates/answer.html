@@ -14,7 +14,8 @@
         <h1>Cause of Why</h1>
         <strong>Query:</strong> {{ escape(query) }}<br>
         <strong>Modified Query:</strong> {{ escape(ir_query) }}<br>
-        <strong>Matching Pages:</strong> {{ num_pages }}
+        <strong>Matching Pages:</strong> {{ num_pages }}<br>
+        <strong>Matching Answers:</strong> {{ num_answers }}
         <table id="search">
             <tr>
                 <th>Rank</th>
@@ -24,7 +25,7 @@
             {% for position, answer in enumerate(answers, start=1) %}
             <tr>
                 <td>{{ position }}</td>
-                <td><a href="http://simple.wikipedia.org/?curid={{ answer.page.ID }}" title="{{ '{:.2%}'.format(answer.page.cosine_sim) }}">{{ answer.page.title }}</a></td>
+                <td><a href="http://simple.wikipedia.org/?curid={{ answer.page.ID }}" title="{{ 'Score: {}'.format(answer.score) }}">{{ answer.page.title }}</a></td>
                 <td>{{ answer.text }}</td>
             </tr>
             {% end %}
