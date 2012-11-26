@@ -33,6 +33,7 @@ except ImportError:
               Otherwise, please install the PyMongo library!
           """
     raise
+# pymongo = None  # DEBUG: Uncomment to disable (useful for small corpora)
 import nltk
 from nltk.corpus import stopwords
 
@@ -215,10 +216,13 @@ class Index(object):
             terms = [self.dict.token2id[term] for term in terms]
         except KeyError:
             pass
-        for term in terms:
-            if term in self.toki:
-                ID = self.toki[term]
-                pages.update(ID)
+        if pymongo:
+            pages.update(self.toki[terms])
+        else:
+            for term in terms:
+                if term in self.toki:
+                    ID = self.toki[term]
+                    pages.update(ID)
         return pages
 
     def intersect(self, terms):
@@ -368,8 +372,12 @@ class TokI(object):
     def __getitem__(self, token):
         """Retrieve a token's set of page IDs: {token -> set(page.IDs)}"""
         if pymongo:
+            try:
+                iter(token)
+            except TypeError:
+                token = [token]
             results = set()
-            for result in self.mongo_toki.find({'tok': token}):
+            for result in self.mongo_toki.find({'tok': {'$in': token}}):
                 results.add(result['_id'])
             if results:
                 return results
