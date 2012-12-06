@@ -211,11 +211,15 @@ class Index(object):
 
     def union(self, terms):
         """Returns set of Page.IDs that contain any term in the term list."""
-        pages = set()
+        terms = list(terms)
         try:
-            terms = [self.dict.token2id[term] for term in terms]
-        except KeyError:
-            pass
+            # Check that each term is a number (token-ID).
+            _ = [x + 1 for x in terms]
+        except TypeError:
+            # They're not numbers, so we need to convert them to token-IDs.
+            terms = [self.dict.token2id.get(term, None) for term in terms]
+            terms = [x for x in terms if x]
+        pages = set()
         if pymongo:
             pages.update(self.toki[terms])
         else:
@@ -227,10 +231,14 @@ class Index(object):
 
     def intersect(self, terms):
         """Returns set of Page.IDs that contain all terms in the term list."""
+        terms = list(terms)
         try:
-            terms = [self.dict.token2id[term] for term in terms]
-        except KeyError:
-            terms = list(terms)
+            # Check that each term is a number (token-ID).
+            _ = [x + 1 for x in terms]
+        except TypeError:
+            # They're not numbers, so we need to convert them to token-IDs.
+            terms = [self.dict.token2id.get(term, None) for term in terms]
+            terms = [x for x in terms if x]
         pages = set(self.toki[terms.pop()])
         for term in terms:
             if term in self.toki:
@@ -240,10 +248,14 @@ class Index(object):
 
     def ranked(self, terms):
         """Returns a ranked list of tuples of Page.IDs and similarity value."""
+        terms = list(terms)
         try:
-            terms = [self.dict.token2id[term] for term in terms]
-        except KeyError:
-            pass
+            # Check that each term is a number (token-ID).
+            _ = [x + 1 for x in terms]
+        except TypeError:
+            # They're not numbers, so we need to convert them to token-IDs.
+            terms = [self.dict.token2id.get(term, None) for term in terms]
+            terms = [x for x in terms if x]
         q_tfidf = self.query_tfidf(terms)
         pages = self.union(terms)
         ranked_pages = dict()
