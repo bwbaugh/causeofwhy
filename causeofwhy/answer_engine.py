@@ -179,32 +179,93 @@ class AnswerEngine(object):
 class Answer(object):
     """Represents a single answer."""
 
-    def __init__(self, page, raw, text, ans_eng):
-        """Initializes the Answer object with the Page and answer text."""
+    def __init__(self, page, raw_tokens, text, ans_eng):
+        """Initializes the Answer object with the Page and answer text.
+
+        Args:
+            page: The Page object that the text for this answer is from.
+            raw_tokens: List of token strings, such as from a sentence.
+            text: The plain-text version of the raw_tokens; for output.
+            ans_eng: The AnswerEngine object that was used to generate
+                this Answer object.
+        """
         self.page = page
         self.text = text
-        self.score = self.get_score(raw, ans_eng)
+        self._features = None
+        self.score = self.get_score(raw_tokens, ans_eng)
 
-    def get_score(self, raw, ans_eng):
-        """Compute a score for this answer so that it may be ranked."""
+    def get_score(self, raw_tokens, ans_eng):
+        """Compute a score for this answer so that it may be ranked.
+
+        Args:
+            raw_tokens: List of token strings, such as from a sentence.
+            ans_eng: The AnswerEngine object that was used to generate
+                this Answer object.
+
+        Returns:
+            A float between 0 and 1 that represents the confidence that
+            this answer is a correct answer for the query specified in
+            the AnswerEngine object.
+        """
         (
          term_count,
          related,
          causal_match,
          position,
-        ) = self._compute_score(raw, ans_eng)
+        ) = self._compute_score(raw_tokens, ans_eng)
         if term_count == 0:
             return 0
-        score = 0
-        score += 16 * term_count
-        score += 16 * sum(related)
-        # score += 16 * causal_match
-        score -= 4 * math.sqrt(sum(position))
-        # score -= 4 * math.sqrt(max(position) - min(position))
+        position = math.sqrt(sum(position))
+        self._features = (
+                         self.page.cosine_sim,
+                         term_count,
+                         sum(related),
+                         sum(related) / len(ans_eng.ir_query),  # average
+                         causal_match,
+                         position,
+                         len(self.text),
+                        )
+        # Weights computed using logistic regression
+        weights = (
+                   1.8214,  # page_cosine_sim
+                   0.4712,  # term_count
+                   0.4206,  # related_sum
+                   1.7482,  # related_average
+                   0.187,  # causal_match
+                   - 0.0559,  # position
+                   - 0.0002,  # text_length
+                   )
+        score = -13.0476  # intercept
+        for w, x in zip(weights, self._features):
+            # Multiply each feature by its corresponding weight.
+            score += w * x
+        # Compute probability using the sigmoid function.
+        score = 1 / (math.exp(-score) + 1)
+
         return score
 
-    def _compute_score(self, sentence, ans_eng):
-        """Compute various score components from the sentence."""
+    def _compute_score(self, raw_tokens, ans_eng):
+        """Compute various score components from the answer text.
+
+        Args:
+            raw_tokens: List of token strings, such as from a sentence.
+            ans_eng: The AnswerEngine object that was used to generate
+                this Answer object.
+
+        Returns:
+            term_count: Integer number of how many query-terms had a
+                matching answer-term with a semantic relatedness (LCH)
+                value above the threshold specified in the ans_eng.
+            related: List of LCH similarity values (semantic relatedness),
+                representing the maximum LCH value for each query-term
+                when evaluated with each answer-term.
+            causal_match: Boolean value representing whether or not the
+                (usually hidden) causal term had a match (LCH greater
+                than the threshold in ans_eng).
+            position: List of token indexes for each query term,
+                representing the location in the raw_tokens that had the
+                maximal semantic relatedness (LCH) for each query term.
+        """
         term_count = 0
         related = []
         causal_match = False
@@ -212,7 +273,7 @@ class Answer(object):
         for term, synsets in ans_eng.ir_query_tagged:
             match = False
             term_related = []
-            for i, page_term in enumerate(indexer.regularize(sentence)):
+            for i, page_term in enumerate(indexer.regularize(raw_tokens)):
                 page_term_related = ans_eng.related_values(synsets, page_term)
                 if page_term_related:
                     term_related.append((max(page_term_related), i))

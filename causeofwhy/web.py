@@ -41,9 +41,10 @@ class QueryHandler(tornado.web.RequestHandler):
         """Gets user query and any args and sends to an AnswerEngine."""
         self.query = self.get_argument('q')
         num_top = int(self.get_argument('top', default=5))
-        self.num = int(self.get_argument('num', default=10))
+        self.num = int(self.get_argument('num', default=100))
         start = int(self.get_argument('start', default=0))
         lch = float(self.get_argument('lch', default=2.16))
+        self.log_training = bool(self.get_argument('train', default=True))
         self.ans_eng = AnswerEngine(self.index, self.query, start, num_top, lch)
         self.pool.apply_async(answer_engine.get_answers, (self.ans_eng,),
                               callback=self.callback)
@@ -51,6 +52,7 @@ class QueryHandler(tornado.web.RequestHandler):
     def callback(self, args):
         """Renders a list of computed answers as a response to the query."""
         answers, ir_query_tagged = args
+        # Display result
         self.render("answer.html",
                     query=self.query,
                     ir_query=' '.join(self.ans_eng.ir_query),
@@ -58,6 +60,15 @@ class QueryHandler(tornado.web.RequestHandler):
                     num_pages=self.ans_eng.num_pages,
                     num_answers=len(answers),
                     answers=answers[:self.num])
+        # Log answer details
+        if self.log_training:
+            with open('log_training.txt'.format(self.num), mode='a') as f:
+                f.write('\t'.join([' '.join(self.ans_eng.ir_query),
+                                   self.query]) + '\t0')
+                for rank, answer in enumerate(answers, start=1):
+                    f.write('\t' + '\t'.join([str(rank)] + [str(x) for x in
+                                                            answer._features]))
+                f.write('\n')
 
 
 def main(index, port=8080):
