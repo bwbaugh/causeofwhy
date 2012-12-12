@@ -33,7 +33,7 @@ except ImportError:
               Otherwise, please install the PyMongo library!
           """
     raise
-# pymongo = None  # DEBUG: Uncomment to disable (useful for small corpora)
+pymongo = None  # DEBUG: Uncomment to disable (useful for small corpora)
 import nltk
 from nltk.corpus import stopwords
 

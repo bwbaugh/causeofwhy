@@ -68,6 +68,9 @@ Converts text from MediaWiki markup format to plain text.
 
 * <http://medialab.di.unipi.it/wiki/Wikipedia_extractor>
 
+Optional Libraries
+------------------
+
 ### PyMongo
 
 Tools for interacting with MongoDB databases. This is useful for working

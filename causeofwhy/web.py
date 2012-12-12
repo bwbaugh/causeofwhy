@@ -44,7 +44,7 @@ class QueryHandler(tornado.web.RequestHandler):
         self.num = int(self.get_argument('num', default=100))
         start = int(self.get_argument('start', default=0))
         lch = float(self.get_argument('lch', default=2.16))
-        self.log_training = bool(self.get_argument('train', default=True))
+        self.log_training = bool(self.get_argument('train', default=False))
         self.ans_eng = AnswerEngine(self.index, self.query, start, num_top, lch)
         self.pool.apply_async(answer_engine.get_answers, (self.ans_eng,),
                               callback=self.callback)
