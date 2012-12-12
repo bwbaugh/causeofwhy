@@ -60,7 +60,10 @@ def write_data(fileobj):
             for answer in answers:
                 rank, answer = answer.split('\t', 1)
                 answer = answer.split('\t')
-                assert len(answer) == len(FEATURES)
+                if len(answer) != len(FEATURES):
+                    print 'ERROR ON LINE:'
+                    print line
+                    raise ValueError
                 answer[-1] = answer[-1].strip()
                 if rank in answer_positions:
                     answer.append('1')
