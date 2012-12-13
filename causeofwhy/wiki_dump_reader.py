@@ -93,6 +93,13 @@ class Page(object):
 
     def remove_markup(self):
         """Remove wiki markup leaving just the plain-text."""
+        # First fix wiktioanry links that aren't being handled properly
+        # by the WikiExtractor library.
+        wikt = r"\[{2,}wikt:[^\|]+\|([^\]]+)\]{2,}"
+        self.text = re.sub(wikt, r'\1', self.text)
+        broken_wikt = r"{{broken wikt link\|([^\|}]+)(?:\|([^}]+))?}{2,}"
+        self.text = re.sub(broken_wikt, r'\1', self.text)
+        # Use the WikiExtractor library to finish processing
         self.text = WikiExtractor.clean(self.text)
         self.text = '\n'.join(WikiExtractor.compact(self.text))
 
