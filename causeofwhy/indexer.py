@@ -519,7 +519,8 @@ def first_pass_writer(doneq, wiki_location):
                               + '\n')
     finally:
         # Save token indices
-        dictionary.filter_extremes(no_below=20, no_above=0.1)
+        # TODO(bwbaugh): Make the filtering of the dictionary configurable.
+        # dictionary.filter_extremes(no_below=2, no_above=0.9)
         dictionary.save_as_text(wiki_location + '.dict')
 
 
