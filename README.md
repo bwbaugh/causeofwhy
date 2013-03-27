@@ -5,10 +5,9 @@ The goal of this project is to implement a Question Answering (QA)
 system that answers causal type questions. We use Wikipedia as a
 knowledge base, extracting answers to user questions from the articles.
 
-This project is currently under fast-paced active development. Currently
-we are focused on getting the system's engine working, so the user
-interface is on the back burner right now. Please stay tuned for lots of
-updates!
+Currently we are focused on getting the system's engine working, so the
+user interface is on the back burner right now. Please stay tuned for
+lots of updates!
 
 Causal Questions
 ----------------
